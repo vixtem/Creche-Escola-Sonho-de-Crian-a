@@ -2,6 +2,8 @@
 
 Site institucional para educação infantil, de 2 a 5 anos. Primeira versão visual construída a partir da marca, dos uniformes e das imagens conceituais fornecidas por Vitor Alves.
 
+![Prévia da primeira versão](docs/preview.jpg)
+
 ## Desenvolvimento
 
 Node.js 22.12+ e npm.
@@ -41,3 +43,9 @@ Confirmar com a direção: endereço, contato, turnos, organização das turmas 
 - https://espacobrincar.com.br/ — clareza na apresentação da proposta e das vivências.
 
 As referências orientaram a organização do conteúdo. Identidade, composição e textos desta versão são próprios; nenhum material visual dessas escolas foi reutilizado.
+
+## Validação técnica desta versão
+
+Build de produção aprovado localmente e no GitHub Actions. Navegação por idade, abertura/fechamento da galeria, FAQ e geração da mensagem conferidos no navegador. A publicação depende de habilitar GitHub Pages com origem GitHub Actions nas configurações do repositório.
+
+A auditoria de dependências em 17/11/2026 apontou o aviso GHSA-fc5q-39xc-vjpf em `picomatch`, transitivo das ferramentas de desenvolvimento; o mantenedor ainda não publicou correção. A página publicada é estática e não recebe padrões glob dos visitantes. O Vite está em 7.3.8, com mínimo configurado nessa versão; não aplicar o downgrade automático sugerido por npm audit para Vite 6.2.7. Referência: https://github.com/advisories/GHSA-fc5q-39xc-vjpf
