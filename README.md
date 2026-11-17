@@ -49,3 +49,10 @@ As referências orientaram a organização do conteúdo. Identidade, composiçã
 Build de produção aprovado localmente e no GitHub Actions. Navegação por idade, abertura/fechamento da galeria, FAQ e geração da mensagem conferidos no navegador. A publicação depende de habilitar GitHub Pages com origem GitHub Actions nas configurações do repositório.
 
 A auditoria de dependências em 17/11/2026 apontou o aviso GHSA-fc5q-39xc-vjpf em `picomatch`, transitivo das ferramentas de desenvolvimento; o mantenedor ainda não publicou correção. A página publicada é estática e não recebe padrões glob dos visitantes. O Vite está em 7.3.8, com mínimo configurado nessa versão; não aplicar o downgrade automático sugerido por npm audit para Vite 6.2.7. Referência: https://github.com/advisories/GHSA-fc5q-39xc-vjpf
+
+## Ajuste para smartphones
+
+Layout revisado em larguras de 320, 390 e 768 pixels no navegador: menu, limites horizontais, galeria e navegação entre seções. Cabeçalho e título compactos, imagens recortadas sem esticamento, cartões menores e faixa de valores em duas colunas no celular. As imagens são recortadas em SVG a partir dos arquivos originais, preservando a proporção em qualquer formato de tela.
+
+![Início no smartphone](docs/mobile.jpg)
+![Vivências no smartphone](docs/mobile-vivencias.jpg)
