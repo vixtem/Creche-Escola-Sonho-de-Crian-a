@@ -34,9 +34,9 @@ function Field({ field, values, update }) {
       )}
       {details && value === 'Sim' && (
         <div className="enrollment-detail">
-          <label htmlFor={`${id}-details`}>{details} {name !== 'food' && <span>(opcional)</span>}</label>
+          <label htmlFor={`${id}-details`}>{details} <span>(obrigatório)</span></label>
           <textarea id={`${id}-details`} name={`${name}Details`}
-            rows={2} maxLength={240} required={name === 'food'}
+            rows={2} maxLength={240} required
             value={values[`${name}Details`] || ''}
             onChange={event => update(`${name}Details`, event.currentTarget.value)} />
         </div>
