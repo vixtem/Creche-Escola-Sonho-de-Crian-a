@@ -8,7 +8,7 @@ export const sections = [
       { name: 'birth', label: 'Data de nascimento', type: 'date' },
       { name: 'age', label: 'Idade', type: 'age' },
       { name: 'sex', label: 'Sexo', options: ['Feminino', 'Masculino', 'Prefiro não informar'] },
-      { name: 'cep', label: 'CEP', limit: 9, autoComplete: 'section-crianca postal-code' },
+      { name: 'cep', label: 'CEP', limit: 9, optional: true, autoComplete: 'section-crianca postal-code' },
       { name: 'address', label: 'Endereço completo (rua, número, complemento e cidade)', limit: 180, wide: true },
       { name: 'district', label: 'Bairro', limit: 80, wide: true },
     ],
