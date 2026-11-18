@@ -96,7 +96,11 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
         if (error) throw error;
       }
     } catch (err) {
-      if (err.code === 'email_not_confirmed') setError('Confirme o e-mail de cadastro antes de entrar.');
+      if (err.code === 'over_email_send_rate_limit') {
+        setError('O limite temporário de envio de e-mails foi atingido. Aguarde até uma hora e tente novamente.');
+      } else if (err.code === 'over_request_rate_limit' || err.status === 429) {
+        setError('Muitas tentativas seguidas. Aguarde alguns instantes e tente novamente.');
+      } else if (err.code === 'email_not_confirmed') setError('Confirme o e-mail de cadastro antes de entrar.');
       else if (err.code === 'weak_password') setError('Escolha uma senha mais forte.');
       else if (staffOtp && sent) setError('Código inválido ou expirado. Solicite um novo acesso por e-mail.');
       else if (activeMode === 'enter') setError('Não foi possível entrar. Confira o e-mail e a senha.');
