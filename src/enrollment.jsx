@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
 import { sections, ageOnDate } from './enrollment-fields';
+import { prepareEnrollmentPhoto } from './enrollment-photo';
 import './styles.css';
 import './enrollment.css';
 
@@ -44,6 +45,26 @@ function Field({ field, values, update }) {
   );
 }
 
+function PhotoField({ photo, error, loading, onChange }) {
+  return (
+    <div className="enrollment-field enrollment-wide enrollment-photo">
+      <div>
+        <label htmlFor="enrollment-photo">Foto 3×4 da criança <span>(opcional)</span></label>
+        <input id="enrollment-photo" type="file" accept="image/jpeg,image/png,image/webp"
+          aria-describedby="enrollment-photo-help" onChange={event => onChange(event.currentTarget)} />
+        <p id="enrollment-photo-help">JPG, PNG ou WebP, até 12 MB. Escolha uma foto com o rosto centralizado.</p>
+        {photo && <button className="text-link" type="button" onClick={event => {
+          const input = event.currentTarget.form.querySelector('#enrollment-photo');
+          input.value = '';
+          onChange(input);
+        }}>Remover foto</button>}
+        <p role="status">{loading ? 'Preparando foto…' : error}</p>
+      </div>
+      {photo && <img src={photo} alt="Prévia do recorte da foto 3×4" />}
+    </div>
+  );
+}
+
 function localDate() {
   const now = new Date();
   return [now.getFullYear(), now.getMonth() + 1, now.getDate()]
@@ -54,6 +75,29 @@ function Enrollment() {
   const [values, setValues] = useState({});
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
+
+  async function changePhoto(input) {
+    const file = input.files[0];
+    setPhoto(null);
+    setPhotoError('');
+    setStatus('');
+    setPhotoLoading(Boolean(file));
+    if (!file) return;
+    try {
+      const image = await prepareEnrollmentPhoto(file);
+      if (input.files[0] === file) setPhoto(image);
+    } catch (error) {
+      if (input.files[0] === file) {
+        input.value = '';
+        setPhotoError(error.message);
+      }
+    } finally {
+      if (input.files[0] === file || !input.files.length) setPhotoLoading(false);
+    }
+  }
 
   function update(name, value) {
     setValues(current => ({ ...current, [name]: value }));
@@ -66,6 +110,7 @@ function Enrollment() {
 
   async function download(event) {
     event.preventDefault();
+    if (photoLoading) return;
     const form = event.currentTarget;
     const blank = [...form.elements].find(field => field.required && !field.value.trim());
     if (blank) {
@@ -78,7 +123,7 @@ function Enrollment() {
     setStatus('');
     try {
       const { downloadEnrollmentPdf } = await import('./enrollment-download');
-      await downloadEnrollmentPdf(answers);
+      await downloadEnrollmentPdf(answers, photo);
       setStatus('PDF gerado. Guarde o arquivo para apresentar à secretaria.');
     } catch {
       setStatus('Não foi possível gerar o PDF. Tente novamente.');
@@ -108,11 +153,13 @@ function Enrollment() {
               <legend>{title}</legend>
               <div className="enrollment-grid">
                 {fields.map(field => <Field key={field.name} field={field} values={answers} update={update} />)}
+                {fields[0].name === 'child' &&
+                  <PhotoField photo={photo} error={photoError} loading={photoLoading} onChange={changePhoto} />}
               </div>
             </fieldset>
           ))}
           <div className="enrollment-actions">
-            <button className="button" type="submit" disabled={busy}>
+            <button className="button" type="submit" disabled={busy || photoLoading}>
               <Download aria-hidden="true" size={19} /> {busy ? 'Gerando PDF…' : 'Baixar ficha em PDF'}
             </button>
             <p role="status">{status}</p>

@@ -116,3 +116,19 @@
   .enrollment-grid { grid-template-columns: minmax(0, 1fr); }
   .enrollment-actions .button { width: 100%; }
 }
+
+.enrollment-photo { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+.enrollment-photo > div { flex: 1 1 215px; min-width: 0; }
+.enrollment-photo ::file-selector-button {
+  margin-right: 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--navy);
+  background: #e2f6f2;
+  cursor: pointer;
+}
+.enrollment-photo p { margin-top: 5px; font-size: 13px; }
+.enrollment-photo p:empty { display: none; }
+.enrollment-photo .text-link { min-height: 44px; }
+.enrollment-photo img { width: 66px; height: 88px; border-radius: 6px; }

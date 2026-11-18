@@ -11,6 +11,8 @@ const inset = 14;
 const gap = 18;
 const headingHeight = 29;
 const bottom = 62;
+const photoWidth = 3 * 72 / 2.54;
+const photoHeight = 4 * 72 / 2.54;
 const navy = rgb(.03, .13, .45);
 const white = rgb(1, 1, 1);
 const ink = rgb(.13, .20, .30);
@@ -69,7 +71,7 @@ function groupFields(fields, answers) {
   return rows;
 }
 
-export async function createEnrollmentPdf(answers, fonts, { brand, sample = false } = {}) {
+export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample = false } = {}) {
   const pdf = await PDFDocument.create();
   pdf.setTitle('Ficha de pré-matrícula | Sonho de Criança');
   pdf.setAuthor(school.fullName);
@@ -78,6 +80,7 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
   const regular = await pdf.embedFont(fonts.regular, { subset: true });
   const bold = await pdf.embedFont(fonts.bold, { subset: true });
   const logo = brand ? await pdf.embedPng(brand) : null;
+  const portrait = photo ? await pdf.embedJpg(photo) : null;
   let page;
   let cursor;
 
@@ -182,7 +185,21 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
     });
   }
 
-  function drawSection(title, palette, rows, sectionNumber) {
+  function drawPhoto(top, accent) {
+    const x = margin + boxWidth - inset - photoWidth;
+    if (portrait) {
+      page.drawImage(portrait, { x, y: top - photoHeight, width: photoWidth, height: photoHeight });
+    } else {
+      const label = 'Foto 3×4';
+      const optional = '(opcional)';
+      const center = x + photoWidth / 2;
+      draw(label, center - bold.widthOfTextAtSize(label, 10) / 2, top - 52, 10, bold, accent);
+      draw(optional, center - regular.widthOfTextAtSize(optional, 9) / 2, top - 67, 9, regular, muted);
+    }
+    roundedBox(x, top, photoWidth, photoHeight, portrait ? 0 : 7, { borderColor: accent, borderWidth: .65 });
+  }
+
+  function drawSection(title, palette, rows, sectionNumber, showPhoto) {
     const bodyHeight = rows.reduce((total, row) => total + row.height, 0);
     const sectionHeight = headingHeight + 19 + bodyHeight;
     const radius = 9;
@@ -192,6 +209,7 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
     draw(String(sectionNumber), margin + 13.5, cursor - 17, 9, bold, white);
     draw(title, margin + 32, cursor - 18, 11, bold, palette.accent);
     let rowY = cursor - headingHeight - 13;
+    if (showPhoto) drawPhoto(rowY, palette.accent);
     for (const row of rows) {
       row.fields.forEach((field, index) => {
         drawField(field, margin + inset + index * (row.fieldWidth + gap), rowY, row.fieldWidth, palette.accent);
@@ -205,8 +223,10 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
   for (const [index, { title, fields }] of sections.entries()) {
     if (fields[0].name === 'allergy') nextPage();
     const palette = colors[fields[0].name];
-    const rows = groupFields(fields, answers).map(row => {
-      const fullWidth = boxWidth - 2 * inset;
+    const hasPhoto = fields[0].name === 'child';
+    const rows = groupFields(fields, answers).map((row, rowIndex) => {
+      const reserved = hasPhoto && rowIndex < 3 ? photoWidth + gap : 0;
+      const fullWidth = boxWidth - 2 * inset - reserved;
       const fieldWidth = row.canPair ? (fullWidth - gap) / 2 : fullWidth;
       const plannedFields = row.entries.map(entry => planField(entry, fieldWidth));
       return { fieldWidth, fields: plannedFields, height: Math.max(...plannedFields.map(field => field.height)) };
@@ -224,7 +244,7 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
         nextPage();
         continue;
       }
-      drawSection(from === 0 ? title : `${title} (continuação)`, palette, rows.slice(from, end), index + 1);
+      drawSection(from === 0 ? title : `${title} (continuação)`, palette, rows.slice(from, end), index + 1, hasPhoto && from === 0);
       from = end;
       if (from < rows.length) nextPage();
     }

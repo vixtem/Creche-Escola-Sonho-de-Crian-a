@@ -8,14 +8,14 @@ async function loadAsset(url) {
   return response.arrayBuffer();
 }
 
-export async function downloadEnrollmentPdf(answers) {
+export async function downloadEnrollmentPdf(answers, photo) {
   const brandUrl = `${import.meta.env.BASE_URL}images/marca-ficha.png`;
   const [regular, bold, brand] = await Promise.all([
     loadAsset(regularUrl),
     loadAsset(boldUrl),
     loadAsset(brandUrl).catch(() => undefined),
   ]);
-  const bytes = await createEnrollmentPdf(answers, { regular, bold }, { brand });
+  const bytes = await createEnrollmentPdf(answers, { regular, bold }, { brand, photo });
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
   const link = document.createElement('a');
   link.href = url;
