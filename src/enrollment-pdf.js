@@ -5,14 +5,26 @@ import { school } from './school.js';
 
 const width = 595.28;
 const height = 841.89;
-const margin = 44;
-const contentWidth = width - 2 * margin;
+const margin = 40;
+const boxWidth = width - margin * 2;
+const inset = 14;
+const gap = 18;
+const headingHeight = 29;
+const bottom = 62;
 const navy = rgb(.03, .13, .45);
-const teal = rgb(0, .43, .40);
-const lightTeal = rgb(.91, .97, .96);
-const yellow = rgb(1, .87, 0);
-const ink = rgb(.14, .21, .32);
-const gray = rgb(.31, .37, .45);
+const white = rgb(1, 1, 1);
+const ink = rgb(.13, .20, .30);
+const muted = rgb(.31, .37, .45);
+const rule = rgb(.77, .81, .86);
+
+const colors = {
+  child: { accent: rgb(.61, .15, .28), tint: rgb(1, .93, .95) },
+  schedule: { accent: rgb(.02, .38, .62), tint: rgb(.91, .96, 1) },
+  guardian: { accent: rgb(.53, .32, .05), tint: rgb(1, .96, .85) },
+  allergy: { accent: rgb(.03, .42, .37), tint: rgb(.88, .97, .95) },
+  food: { accent: rgb(.29, .42, .08), tint: rgb(.94, .97, .87) },
+  priorSchool: { accent: rgb(.36, .24, .57), tint: rgb(.95, .92, .99) },
+};
 
 function wrap(text, font, size, maxWidth) {
   const lines = [];
@@ -38,7 +50,26 @@ function wrap(text, font, size, maxWidth) {
   return lines;
 }
 
-export async function createEnrollmentPdf(answers, fonts) {
+function groupFields(fields, answers) {
+  const rows = [];
+  for (const item of fields) {
+    let value = (answers[item.name] || '').trim();
+    if (item.type === 'date' && value) value = value.split('-').reverse().join('/');
+    const entry = { label: item.label, value, options: item.options };
+    const previous = rows.at(-1);
+    if (!item.wide && previous?.canPair && previous.entries.length === 1) {
+      previous.entries.push(entry);
+    } else {
+      rows.push({ entries: [entry], canPair: !item.wide });
+    }
+    if (item.details && value === 'Sim') {
+      rows.push({ entries: [{ label: item.details, value: (answers[`${item.name}Details`] || '').trim() }] });
+    }
+  }
+  return rows;
+}
+
+export async function createEnrollmentPdf(answers, fonts, { brand, sample = false } = {}) {
   const pdf = await PDFDocument.create();
   pdf.setTitle('Ficha de pré-matrícula | Sonho de Criança');
   pdf.setAuthor(school.fullName);
@@ -46,6 +77,7 @@ export async function createEnrollmentPdf(answers, fonts) {
   pdf.registerFontkit(fontkit);
   const regular = await pdf.embedFont(fonts.regular, { subset: true });
   const bold = await pdf.embedFont(fonts.bold, { subset: true });
+  const logo = brand ? await pdf.embedPng(brand) : null;
   let page;
   let cursor;
 
@@ -53,81 +85,148 @@ export async function createEnrollmentPdf(answers, fonts) {
     page.drawText(text, { x, y, size, font, color });
   }
 
+  function horizontalRule(x, y, lineWidth, color, thickness = .55) {
+    page.drawLine({ start: { x, y }, end: { x: x + lineWidth, y }, thickness, color });
+  }
+
   function nextPage() {
     page = pdf.addPage([width, height]);
-    page.drawRectangle({ x: 0, y: height - 10, width, height: 10, color: yellow });
-    draw(school.fullName, margin, height - 48, 12, bold, teal);
-    draw('Ficha de pré-matrícula', margin, height - 82, 28, bold, navy);
-    draw(`Educação Infantil | ${school.ageRange}`, margin, height - 103, 11, regular, gray);
-    cursor = height - 131;
-  }
-
-  function sectionTitle(title) {
-    page.drawRectangle({ x: margin, y: cursor - 24, width: contentWidth, height: 24, color: lightTeal });
-    draw(title, margin + 10, cursor - 16, 11, bold, navy);
-    cursor -= 36;
-  }
-
-  function fieldHeight(label, value, fieldWidth) {
-    return wrap(label, bold, 9, fieldWidth).length * 12
-      + wrap(value, regular, 11, fieldWidth).length * 14 + 12;
-  }
-
-  function field(label, value, x, fieldWidth) {
-    let y = cursor;
-    for (const line of wrap(label, bold, 9, fieldWidth)) {
-      draw(line, x, y - 9, 9, bold, gray);
-      y -= 12;
+    const headerY = height - 113;
+    const titleWidth = 205;
+    page.drawRectangle({ x: margin, y: headerY, width: boxWidth, height: 73, borderColor: navy, borderWidth: .8 });
+    page.drawRectangle({ x: margin, y: headerY, width: titleWidth, height: 73, color: navy });
+    page.drawRectangle({ x: margin, y: headerY, width: titleWidth, height: 4, color: rgb(1, .87, 0) });
+    draw('FICHA DE', margin + 16, headerY + 47, 11, bold, white);
+    draw('Pré-matrícula', margin + 16, headerY + 21, 23, bold, white);
+    const brandX = margin + titleWidth + 19;
+    if (logo) {
+      const dimensions = logo.scaleToFit(48, 43);
+      page.drawImage(logo, { x: brandX, y: headerY + (73 - dimensions.height) / 2, ...dimensions });
     }
-    for (const line of wrap(value, regular, 11, fieldWidth)) {
-      draw(line, x, y - 10, 11, regular, ink);
-      y -= 14;
+    const textX = logo ? brandX + 57 : brandX;
+    draw(school.fullName, textX, headerY + 41, 12, bold, navy);
+    draw(`Educação Infantil · ${school.ageRange}`, textX, headerY + 23, 10, regular, muted);
+    if (sample) draw('MODELO PREENCHIDO · DADOS FICTÍCIOS', margin, headerY - 18, 8, bold, muted);
+    cursor = headerY - (sample ? 31 : 19);
+  }
+
+  function planOptions(entry, fieldWidth) {
+    let x = 0;
+    let row = 0;
+    const options = entry.options.map(label => {
+      const optionWidth = 14 + regular.widthOfTextAtSize(label, 9.5);
+      if (x > 0 && x + optionWidth > fieldWidth) {
+        x = 0;
+        row += 1;
+      }
+      const option = { label, x, row, selected: entry.value === label };
+      x += optionWidth + 13;
+      return option;
+    });
+    return { options, height: (row + 1) * 19 };
+  }
+
+  function planField(entry, fieldWidth) {
+    const labels = wrap(entry.label, bold, 9, fieldWidth);
+    const labelHeight = labels.length * 13;
+    if (entry.options) {
+      const choices = planOptions(entry, fieldWidth);
+      return { labels, labelHeight, options: choices.options, height: labelHeight + choices.height + 9 };
     }
+    const values = wrap(entry.value || 'Não informado', regular, 11, fieldWidth);
+    return { labels, labelHeight, values, height: labelHeight + values.length * 19 + 9 };
+  }
+
+  function drawField(field, x, y, fieldWidth, accent) {
+    field.labels.forEach((line, index) => draw(line, x, y - 9 - index * 13, 9, bold, muted));
+    const answerTop = y - field.labelHeight;
+    if (field.options) {
+      for (const option of field.options) {
+        const boxX = x + option.x;
+        const optionY = answerTop - 13 - option.row * 19;
+        page.drawRectangle({
+          x: boxX, y: optionY - 1, width: 9, height: 9, borderColor: accent, borderWidth: .8,
+          color: option.selected ? accent : white,
+        });
+        if (option.selected) {
+          const start = { x: boxX + 2, y: optionY + 3 };
+          const middle = { x: boxX + 4, y: optionY + 1.5 };
+          const end = { x: boxX + 7.2, y: optionY + 5.5 };
+          page.drawLine({ start, end: middle, color: white, thickness: 1 });
+          page.drawLine({ start: middle, end, color: white, thickness: 1 });
+        }
+        draw(option.label, boxX + 14, optionY, 9.5, regular, ink);
+      }
+      return;
+    }
+
+    field.values.forEach((value, index) => {
+      const baseline = answerTop - 13 - index * 19;
+      draw(value, x, baseline, 11, regular, ink);
+      horizontalRule(x, baseline - 4, fieldWidth, rule);
+    });
+  }
+
+  function drawSection(title, palette, rows, sectionNumber) {
+    const bodyHeight = rows.reduce((total, row) => total + row.height, 0);
+    const sectionHeight = headingHeight + 19 + bodyHeight;
+    page.drawRectangle({
+      x: margin, y: cursor - sectionHeight, width: boxWidth, height: sectionHeight,
+      borderColor: palette.accent, borderWidth: .65,
+    });
+    page.drawRectangle({
+      x: margin + .5, y: cursor - headingHeight, width: boxWidth - 1, height: headingHeight - .5,
+      color: palette.tint,
+    });
+    page.drawRectangle({ x: margin + 9, y: cursor - 21, width: 15, height: 15, color: palette.accent });
+    draw(String(sectionNumber), margin + 13.5, cursor - 17, 9, bold, white);
+    draw(title, margin + 32, cursor - 18, 11, bold, palette.accent);
+    let rowY = cursor - headingHeight - 13;
+    for (const row of rows) {
+      row.fields.forEach((field, index) => {
+        drawField(field, margin + inset + index * (row.fieldWidth + gap), rowY, row.fieldWidth, palette.accent);
+      });
+      rowY -= row.height;
+    }
+    cursor -= sectionHeight + 14;
   }
 
   nextPage();
-  for (const { title, fields } of sections) {
-    const rows = [];
-    for (const item of fields) {
-      let value = (answers[item.name] || '').trim() || 'Não informado';
-      if (item.type === 'date' && answers[item.name]) value = value.split('-').reverse().join('/');
-      const entry = [item.label, value];
-      const previous = rows.at(-1);
-      if (!item.wide && previous?.canPair && previous.entries.length === 1) {
-        previous.entries.push(entry);
-      } else {
-        rows.push({ entries: [entry], canPair: !item.wide });
-      }
-      if (item.details && value === 'Sim') {
-        rows.push({ entries: [[item.details, (answers[`${item.name}Details`] || '').trim() || 'Não informado']] });
-      }
-    }
-    if (title === 'Informações de saúde') nextPage();
-    const gap = 18;
-    const rowWidth = row => row.canPair ? (contentWidth - gap) / 2 : contentWidth;
-    const rowHeight = row => Math.max(...row.entries.map(([label, value]) => fieldHeight(label, value, rowWidth(row))));
+  for (const [index, { title, fields }] of sections.entries()) {
+    if (fields[0].name === 'allergy') nextPage();
+    const palette = colors[fields[0].name];
+    const rows = groupFields(fields, answers).map(row => {
+      const fullWidth = boxWidth - 2 * inset;
+      const fieldWidth = row.canPair ? (fullWidth - gap) / 2 : fullWidth;
+      const plannedFields = row.entries.map(entry => planField(entry, fieldWidth));
+      return { fieldWidth, fields: plannedFields, height: Math.max(...plannedFields.map(field => field.height)) };
+    });
 
-    if (cursor - 36 - rowHeight(rows[0]) < 64) nextPage();
-    sectionTitle(title);
-    for (const row of rows) {
-      const needed = rowHeight(row);
-      if (cursor - needed < 64) {
-        nextPage();
-        sectionTitle(`${title} (continuação)`);
+    let from = 0;
+    while (from < rows.length) {
+      let end = from;
+      let available = cursor - bottom - headingHeight - 19;
+      while (end < rows.length && rows[end].height <= available) {
+        available -= rows[end].height;
+        end += 1;
       }
-      row.entries.forEach(([label, value], index) => field(label, value, margin + index * (rowWidth(row) + gap), rowWidth(row)));
-      cursor -= needed;
+      if (end === from) {
+        nextPage();
+        continue;
+      }
+      drawSection(from === 0 ? title : `${title} (continuação)`, palette, rows.slice(from, end), index + 1);
+      from = end;
+      if (from < rows.length) nextPage();
     }
-    cursor -= 6;
   }
 
   const pages = pdf.getPages();
   pages.forEach((currentPage, index) => {
     page = currentPage;
-    page.drawLine({ start: { x: margin, y: 51 }, end: { x: width - margin, y: 51 }, thickness: .6, color: teal });
-    draw('Pré-matrícula sujeita à confirmação da escola.', margin, 35, 9, regular, gray);
-    const number = `${index + 1} / ${pages.length}`;
-    draw(number, width - margin - regular.widthOfTextAtSize(number, 9), 35, 9, regular, gray);
+    horizontalRule(margin, 51, boxWidth, rule);
+    draw('Pré-matrícula sujeita à confirmação da escola.', margin, 35, 9, regular, muted);
+    const number = `Página ${index + 1} de ${pages.length}`;
+    draw(number, width - margin - regular.widthOfTextAtSize(number, 9), 35, 9, regular, muted);
   });
   return pdf.save();
 }
