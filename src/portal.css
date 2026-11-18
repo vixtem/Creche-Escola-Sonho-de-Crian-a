@@ -38,3 +38,5 @@
   .portal-metrics, .portal-breakdown, .portal tr { break-inside:avoid; }
   .portal-report p, .portal-report th, .portal-report td { color:#182338; }
 }
+
+.portal-demo-notice { border: 1px solid #d8b55f; background: #fff5d8; color: #563d16; }

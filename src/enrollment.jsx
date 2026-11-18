@@ -92,7 +92,8 @@ function Enrollment() {
     setPortal({ client: null, child: null, notice: 'Carregando cadastro da criança…' });
     getPortalClient().then(async client => {
       if (!client) throw new Error();
-      const { data: { session }, error: sessionError } = await client.auth.getSession();
+      const { data: { session }, error: sessionError } = client.demo
+        ? { data: { session: client.demoSession } } : await client.auth.getSession();
       if (sessionError || !session) throw new Error();
       const { data: child, error } = await client.from('enrollment_children').select('id, full_name, birth_date')
         .eq('id', requestedChild).maybeSingle();
@@ -209,7 +210,9 @@ function Enrollment() {
           <p>Educação Infantil · {school.ageRange}</p>
         </div>
         <p className="enrollment-privacy"><ShieldCheck aria-hidden="true" size={21} />
-          <span>{portal.child
+          <span>{portal.client?.demo
+            ? 'Modo de teste. Use apenas dados fictícios. A pré-matrícula de teste fica nesta aba e não é enviada à escola.'
+            : portal.child
             ? 'Envie a pré-matrícula à secretaria e acompanhe pelo portal. Foto e informações de saúde ficam apenas no PDF, gerado neste dispositivo. A vaga depende de confirmação pela escola.'
             : 'Preencha a ficha e baixe o PDF de uma página para apresentar à secretaria. Neste modo, os dados ficam no dispositivo.'}</span>
         </p>
@@ -228,7 +231,7 @@ function Enrollment() {
             </fieldset>
           ))}
           {portal.child && <fieldset className="enrollment-section enrollment-submit">
-            <legend>Enviar à secretaria</legend>
+            <legend>{portal.client.demo ? 'Simular envio à secretaria' : 'Enviar à secretaria'}</legend>
             <div className="enrollment-field">
               <label htmlFor="enrollment-year">Ano letivo</label>
               <select id="enrollment-year" value={schoolYear} disabled={sending || Boolean(sent)}
@@ -238,11 +241,11 @@ function Enrollment() {
             </div>
             <p>O envio usa o cadastro da criança, o turno, o nome, o telefone e o vínculo do responsável, além do e-mail da conta.</p>
             {!sent && <button className="button" type="button" disabled={sending} onClick={send}>
-              {sending ? 'Enviando…' : 'Enviar pré-matrícula'}
+              {sending ? 'Enviando…' : portal.client.demo ? 'Enviar pré-matrícula de teste' : 'Enviar pré-matrícula'}
             </button>}
             {sendError && <p role="alert">{sendError}</p>}
             {sent && <div role="status">
-              <p>{sent.created ? 'Pré-matrícula recebida.' : 'Já existe uma solicitação para esta criança neste ano letivo.'}</p>
+              <p>{sent.created ? (portal.client.demo ? 'Pré-matrícula de teste registrada nesta aba.' : 'Pré-matrícula recebida.') : 'Já existe uma solicitação para esta criança neste ano letivo.'}</p>
               <p>Protocolo <strong>{sent.protocol}</strong></p>
               <a className="text-link" href="./portal.html">Acompanhar solicitação</a>
             </div>}

@@ -1,5 +1,6 @@
 {
   "url": "https://zlmximsiintwqqlsugkq.supabase.co",
   "publishableKey": "sb_publishable_s4Le5rfjXjrdFvPkdpPe6w_NB4qY5tc",
-  "enabled": false
+  "enabled": false,
+  "demo": true
 }

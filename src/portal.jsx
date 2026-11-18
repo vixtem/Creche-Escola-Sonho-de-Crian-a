@@ -354,6 +354,10 @@ function Portal() {
       if (!active) return;
       setClient(api);
       if (!api) return;
+      if (api.demo) {
+        setSession(api.demoSession);
+        return;
+      }
       subscription = api.auth.onAuthStateChange((event, value) => {
         if (active) setSession(value);
       }).data.subscription;
@@ -361,10 +365,10 @@ function Portal() {
     return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
-  const allowed = permission?.userId === session?.user?.id ? permission?.allowed : undefined;
+  const allowed = client?.demo || (permission?.userId === session?.user?.id ? permission?.allowed : undefined);
 
   useEffect(() => {
-    if (!staffMode || !client || !session?.user) return;
+    if (!staffMode || !client || client.demo || !session?.user) return;
     let active = true;
     const userId = session.user.id;
     setPermission(null);
@@ -389,9 +393,12 @@ function Portal() {
       </header>
       <div className="portal-stack-head portal-session">
         <a className="text-link" href={staffMode ? './portal.html' : './portal.html?area=secretaria'}>{staffMode ? 'Portal da família' : 'Acesso da secretaria'}</a>
-        {session && <button type="button" className="text-link" onClick={leave}><LogOut size={17}/> Sair</button>}
+        {session && !client?.demo && <button type="button" className="text-link" onClick={leave}><LogOut size={17}/> Sair</button>}
       </div>
     </div>
+    {client?.demo && <p className="enrollment-privacy portal-demo-notice">
+      <span><strong>Modo de teste.</strong> Use apenas dados fictícios. Os testes ficam nesta aba e não são enviados à escola.</span>
+    </p>}
     {error && <p role="alert">{error}</p>}
     {!error && client === undefined && <p role="status">Carregando portal…</p>}
     {client === null && <section className="portal-card">

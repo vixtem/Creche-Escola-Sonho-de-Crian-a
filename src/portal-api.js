@@ -27,7 +27,11 @@ export function getPortalClient() {
   clientPromise ??= (async () => {
     const response = await fetch(`${import.meta.env.BASE_URL}enrollment-config.json`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Falha ao carregar a configuração do portal.');
-    const { url, publishableKey, enabled } = await response.json();
+    const { url, publishableKey, enabled, demo } = await response.json();
+    if (demo === true) {
+      const { createDemoClient } = await import('./portal-demo.js');
+      return createDemoClient();
+    }
     if (enabled !== true) return null;
     if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(url)
       || !/^sb_publishable_[a-zA-Z0-9_-]+$/.test(publishableKey)) {
