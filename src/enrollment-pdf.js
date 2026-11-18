@@ -89,13 +89,29 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
     page.drawLine({ start: { x, y }, end: { x: x + lineWidth, y }, thickness, color });
   }
 
+  function roundedBox(x, top, boxWidth, boxHeight, radius, style, corners = {}) {
+    const { topRight = radius, bottomRight = radius, bottomLeft = radius } = corners;
+    const path = [
+      `M ${radius} 0 H ${boxWidth - topRight} Q ${boxWidth} 0 ${boxWidth} ${topRight}`,
+      `V ${boxHeight - bottomRight} Q ${boxWidth} ${boxHeight} ${boxWidth - bottomRight} ${boxHeight}`,
+      `H ${bottomLeft} Q 0 ${boxHeight} 0 ${boxHeight - bottomLeft}`,
+      `V ${radius} Q 0 0 ${radius} 0 Z`,
+    ].join(' ');
+    page.drawSvgPath(path, { x, y: top, ...style });
+  }
+
   function nextPage() {
     page = pdf.addPage([width, height]);
-    const headerY = height - 113;
+    cursor = height - margin;
+    if (pdf.getPageCount() > 1) return;
+
+    const headerHeight = 73;
+    const headerY = cursor - headerHeight;
     const titleWidth = 205;
-    page.drawRectangle({ x: margin, y: headerY, width: boxWidth, height: 73, borderColor: navy, borderWidth: .8 });
-    page.drawRectangle({ x: margin, y: headerY, width: titleWidth, height: 73, color: navy });
-    page.drawRectangle({ x: margin, y: headerY, width: titleWidth, height: 4, color: rgb(1, .87, 0) });
+    const radius = 10;
+    roundedBox(margin, cursor, titleWidth, headerHeight, radius, { color: navy }, { topRight: 0, bottomRight: 0 });
+    horizontalRule(margin + radius, headerY + 2.5, titleWidth - radius, rgb(1, .87, 0), 3);
+    roundedBox(margin, cursor, boxWidth, headerHeight, radius, { borderColor: navy, borderWidth: .8 });
     draw('FICHA DE', margin + 16, headerY + 47, 11, bold, white);
     draw('Pré-matrícula', margin + 16, headerY + 21, 23, bold, white);
     const brandX = margin + titleWidth + 19;
@@ -144,9 +160,8 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
       for (const option of field.options) {
         const boxX = x + option.x;
         const optionY = answerTop - 13 - option.row * 19;
-        page.drawRectangle({
-          x: boxX, y: optionY - 1, width: 9, height: 9, borderColor: accent, borderWidth: .8,
-          color: option.selected ? accent : white,
+        roundedBox(boxX, optionY + 8, 9, 9, 1.6, {
+          borderColor: accent, borderWidth: .8, color: option.selected ? accent : white,
         });
         if (option.selected) {
           const start = { x: boxX + 2, y: optionY + 3 };
@@ -170,15 +185,10 @@ export async function createEnrollmentPdf(answers, fonts, { brand, sample = fals
   function drawSection(title, palette, rows, sectionNumber) {
     const bodyHeight = rows.reduce((total, row) => total + row.height, 0);
     const sectionHeight = headingHeight + 19 + bodyHeight;
-    page.drawRectangle({
-      x: margin, y: cursor - sectionHeight, width: boxWidth, height: sectionHeight,
-      borderColor: palette.accent, borderWidth: .65,
-    });
-    page.drawRectangle({
-      x: margin + .5, y: cursor - headingHeight, width: boxWidth - 1, height: headingHeight - .5,
-      color: palette.tint,
-    });
-    page.drawRectangle({ x: margin + 9, y: cursor - 21, width: 15, height: 15, color: palette.accent });
+    const radius = 9;
+    roundedBox(margin, cursor, boxWidth, headingHeight, radius, { color: palette.tint }, { bottomLeft: 0, bottomRight: 0 });
+    roundedBox(margin, cursor, boxWidth, sectionHeight, radius, { borderColor: palette.accent, borderWidth: .65 });
+    roundedBox(margin + 9, cursor - 6, 15, 15, 3, { color: palette.accent });
     draw(String(sectionNumber), margin + 13.5, cursor - 17, 9, bold, white);
     draw(title, margin + 32, cursor - 18, 11, bold, palette.accent);
     let rowY = cursor - headingHeight - 13;
