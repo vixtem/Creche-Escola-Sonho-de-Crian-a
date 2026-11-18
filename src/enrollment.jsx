@@ -145,7 +145,7 @@ function Enrollment() {
           <p>Educação Infantil · {school.ageRange}</p>
         </div>
         <p className="enrollment-privacy"><ShieldCheck aria-hidden="true" size={21} />
-          <span>Preencha e baixe o PDF para apresentar à secretaria. Os dados ficam neste dispositivo e a vaga depende de confirmação pela escola.</span>
+          <span>Preencha a ficha e baixe o PDF de uma página para apresentar à secretaria. Os dados ficam neste dispositivo e a vaga depende de confirmação pela escola.</span>
         </p>
         <form onSubmit={download} autoComplete="off">
           {sections.map(({ title, fields }) => (

@@ -1,16 +1,18 @@
-import { PDFDocument, rgb } from 'pdf-lib';
+import {
+  PDFDocument, concatTransformationMatrix, popGraphicsState, pushGraphicsState, rgb,
+} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { sections } from './enrollment-fields.js';
 import { school } from './school.js';
 
 const width = 595.28;
 const height = 841.89;
-const margin = 40;
+const margin = 24;
 const boxWidth = width - margin * 2;
-const inset = 14;
-const gap = 18;
-const headingHeight = 29;
-const bottom = 62;
+const inset = 11;
+const gap = 12;
+const headingHeight = 21;
+const bottom = 41;
 const photoWidth = 3 * 72 / 2.54;
 const photoHeight = 4 * 72 / 2.54;
 const navy = rgb(.03, .13, .45);
@@ -28,47 +30,30 @@ const colors = {
   priorSchool: { accent: rgb(.36, .24, .57), tint: rgb(.95, .92, .99) },
 };
 
-function wrap(text, font, size, maxWidth) {
+function wrap(text, font, size, width, firstWidth = width) {
   const lines = [];
-  const fits = value => font.widthOfTextAtSize(value, size) <= maxWidth;
+  const fits = value => font.widthOfTextAtSize(value, size) <= (lines.length ? width : firstWidth);
   let line = '';
-  for (const word of text.normalize('NFC').trim().split(/\s+/)) {
+  for (const word of text.split(/\s+/)) {
     const candidate = line ? `${line} ${word}` : word;
     if (fits(candidate)) {
       line = candidate;
-      continue;
-    }
-    if (line) lines.push(line);
-    line = '';
-    for (const character of word) {
-      if (line && !fits(line + character)) {
-        lines.push(line);
-        line = '';
+    } else if (font.widthOfTextAtSize(word, size) <= width) {
+      lines.push(line);
+      line = word;
+    } else {
+      if (line) line += ' ';
+      for (const character of word) {
+        if (line && !fits(line + character)) {
+          lines.push(line.trimEnd());
+          line = '';
+        }
+        line += character;
       }
-      line += character;
     }
   }
   lines.push(line);
   return lines;
-}
-
-function groupFields(fields, answers) {
-  const rows = [];
-  for (const item of fields) {
-    let value = (answers[item.name] || '').trim();
-    if (item.type === 'date' && value) value = value.split('-').reverse().join('/');
-    const entry = { label: item.label, value, options: item.options };
-    const previous = rows.at(-1);
-    if (!item.wide && previous?.canPair && previous.entries.length === 1) {
-      previous.entries.push(entry);
-    } else {
-      rows.push({ entries: [entry], canPair: !item.wide });
-    }
-    if (item.details && value === 'Sim') {
-      rows.push({ entries: [{ label: item.details, value: (answers[`${item.name}Details`] || '').trim() }] });
-    }
-  }
-  return rows;
 }
 
 export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample = false } = {}) {
@@ -79,13 +64,24 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
   pdf.registerFontkit(fontkit);
   const regular = await pdf.embedFont(fonts.regular, { subset: true });
   const bold = await pdf.embedFont(fonts.bold, { subset: true });
+  const supportedCharacters = new Set(regular.getCharacterSet());
   const logo = brand ? await pdf.embedPng(brand) : null;
   const portrait = photo ? await pdf.embedJpg(photo) : null;
-  let page;
-  let cursor;
+  const page = pdf.addPage([width, height]);
+  let cursor = height - margin;
 
   function draw(text, x, y, size, font, color) {
     page.drawText(text, { x, y, size, font, color });
+  }
+
+  function drawAnswer(text, x, y, size, widthScale) {
+    if (widthScale === 1) {
+      draw(text, x, y, size, regular, ink);
+      return;
+    }
+    page.pushOperators(pushGraphicsState(), concatTransformationMatrix(widthScale, 0, 0, 1, x, y));
+    draw(text, 0, 0, size, regular, ink);
+    page.pushOperators(popGraphicsState());
   }
 
   function horizontalRule(x, y, lineWidth, color, thickness = .55) {
@@ -103,86 +99,25 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     page.drawSvgPath(path, { x, y: top, ...style });
   }
 
-  function nextPage() {
-    page = pdf.addPage([width, height]);
-    cursor = height - margin;
-    if (pdf.getPageCount() > 1) return;
-
-    const headerHeight = 73;
+  function drawHeader() {
+    const headerHeight = 55;
     const headerY = cursor - headerHeight;
-    const titleWidth = 205;
-    const radius = 10;
+    const titleWidth = 218;
+    const radius = 9;
     roundedBox(margin, cursor, titleWidth, headerHeight, radius, { color: navy }, { topRight: 0, bottomRight: 0 });
-    horizontalRule(margin + radius, headerY + 2.5, titleWidth - radius, rgb(1, .87, 0), 3);
+    horizontalRule(margin + radius, headerY + 2, titleWidth - radius, rgb(1, .87, 0), 2.5);
     roundedBox(margin, cursor, boxWidth, headerHeight, radius, { borderColor: navy, borderWidth: .8 });
-    draw('FICHA DE', margin + 16, headerY + 47, 11, bold, white);
-    draw('Pré-matrícula', margin + 16, headerY + 21, 23, bold, white);
-    const brandX = margin + titleWidth + 19;
+    draw('Ficha de pré-matrícula', margin + 12, headerY + 21, 17.5, bold, white);
+    const brandX = margin + titleWidth + 11;
     if (logo) {
-      const dimensions = logo.scaleToFit(48, 43);
-      page.drawImage(logo, { x: brandX, y: headerY + (73 - dimensions.height) / 2, ...dimensions });
+      const dimensions = logo.scaleToFit(41, 35);
+      page.drawImage(logo, { x: brandX, y: headerY + (headerHeight - dimensions.height) / 2, ...dimensions });
     }
-    const textX = logo ? brandX + 57 : brandX;
-    draw(school.fullName, textX, headerY + 41, 12, bold, navy);
-    draw(`Educação Infantil · ${school.ageRange}`, textX, headerY + 23, 10, regular, muted);
-    if (sample) draw('MODELO PREENCHIDO · DADOS FICTÍCIOS', margin, headerY - 18, 8, bold, muted);
-    cursor = headerY - (sample ? 31 : 19);
-  }
-
-  function planOptions(entry, fieldWidth) {
-    let x = 0;
-    let row = 0;
-    const options = entry.options.map(label => {
-      const optionWidth = 14 + regular.widthOfTextAtSize(label, 9.5);
-      if (x > 0 && x + optionWidth > fieldWidth) {
-        x = 0;
-        row += 1;
-      }
-      const option = { label, x, row, selected: entry.value === label };
-      x += optionWidth + 13;
-      return option;
-    });
-    return { options, height: (row + 1) * 19 };
-  }
-
-  function planField(entry, fieldWidth) {
-    const labels = wrap(entry.label, bold, 9, fieldWidth);
-    const labelHeight = labels.length * 13;
-    if (entry.options) {
-      const choices = planOptions(entry, fieldWidth);
-      return { labels, labelHeight, options: choices.options, height: labelHeight + choices.height + 9 };
-    }
-    const values = wrap(entry.value || 'Não informado', regular, 11, fieldWidth);
-    return { labels, labelHeight, values, height: labelHeight + values.length * 19 + 9 };
-  }
-
-  function drawField(field, x, y, fieldWidth, accent) {
-    field.labels.forEach((line, index) => draw(line, x, y - 9 - index * 13, 9, bold, muted));
-    const answerTop = y - field.labelHeight;
-    if (field.options) {
-      for (const option of field.options) {
-        const boxX = x + option.x;
-        const optionY = answerTop - 13 - option.row * 19;
-        roundedBox(boxX, optionY + 8, 9, 9, 1.6, {
-          borderColor: accent, borderWidth: .8, color: option.selected ? accent : white,
-        });
-        if (option.selected) {
-          const start = { x: boxX + 2, y: optionY + 3 };
-          const middle = { x: boxX + 4, y: optionY + 1.5 };
-          const end = { x: boxX + 7.2, y: optionY + 5.5 };
-          page.drawLine({ start, end: middle, color: white, thickness: 1 });
-          page.drawLine({ start: middle, end, color: white, thickness: 1 });
-        }
-        draw(option.label, boxX + 14, optionY, 9.5, regular, ink);
-      }
-      return;
-    }
-
-    field.values.forEach((value, index) => {
-      const baseline = answerTop - 13 - index * 19;
-      draw(value, x, baseline, 11, regular, ink);
-      horizontalRule(x, baseline - 4, fieldWidth, rule);
-    });
+    const textX = logo ? brandX + 50 : brandX;
+    draw(school.fullName, textX, headerY + 32, 12, bold, navy);
+    draw(`Educação Infantil · ${school.ageRange}`, textX, headerY + 15, 10.5, regular, muted);
+    if (sample) draw('MODELO PREENCHIDO · DADOS FICTÍCIOS', margin, headerY - 12, 9, bold, muted);
+    cursor = headerY - (sample ? 19 : 8);
   }
 
   function drawPhoto(top, accent) {
@@ -199,64 +134,143 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     roundedBox(x, top, photoWidth, photoHeight, portrait ? 0 : 7, { borderColor: accent, borderWidth: .65 });
   }
 
-  function drawSection(title, palette, rows, sectionNumber, showPhoto) {
-    const bodyHeight = rows.reduce((total, row) => total + row.height, 0);
-    const sectionHeight = headingHeight + 19 + bodyHeight;
-    const radius = 9;
-    roundedBox(margin, cursor, boxWidth, headingHeight, radius, { color: palette.tint }, { bottomLeft: 0, bottomRight: 0 });
-    roundedBox(margin, cursor, boxWidth, sectionHeight, radius, { borderColor: palette.accent, borderWidth: .65 });
-    roundedBox(margin + 9, cursor - 6, 15, 15, 3, { color: palette.accent });
-    draw(String(sectionNumber), margin + 13.5, cursor - 17, 9, bold, white);
-    draw(title, margin + 32, cursor - 18, 11, bold, palette.accent);
-    let rowY = cursor - headingHeight - 13;
-    if (showPhoto) drawPhoto(rowY, palette.accent);
-    for (const row of rows) {
-      row.fields.forEach((field, index) => {
-        drawField(field, margin + inset + index * (row.fieldWidth + gap), rowY, row.fieldWidth, palette.accent);
-      });
-      rowY -= row.height;
-    }
-    cursor -= sectionHeight + 14;
+  const sectionWidth = boxWidth - 2 * inset;
+  const personalWidth = sectionWidth - photoWidth - gap;
+  const titles = sections.map(section => section.title);
+
+  function answer(name) {
+    const value = (answers[name] || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    return Array.from(value, character => supportedCharacters.has(character.codePointAt(0))
+      ? character : '\uFFFD').join('');
   }
 
-  nextPage();
-  for (const [index, { title, fields }] of sections.entries()) {
-    if (fields[0].name === 'allergy') nextPage();
-    const palette = colors[fields[0].name];
-    const hasPhoto = fields[0].name === 'child';
-    const rows = groupFields(fields, answers).map((row, rowIndex) => {
-      const reserved = hasPhoto && rowIndex < 3 ? photoWidth + gap : 0;
-      const fullWidth = boxWidth - 2 * inset - reserved;
-      const fieldWidth = row.canPair ? (fullWidth - gap) / 2 : fullWidth;
-      const plannedFields = row.entries.map(entry => planField(entry, fieldWidth));
-      return { fieldWidth, fields: plannedFields, height: Math.max(...plannedFields.map(field => field.height)) };
+  function statement(name) {
+    const status = answer(name);
+    if (!status) return 'Não informado';
+    const detail = status === 'Sim' ? answer(`${name}Details`) : '';
+    return detail ? `${status} · ${detail}` : status;
+  }
+
+  function buildLayout(size, rowGap, sectionGap, bodyPadding, widthScale = 1) {
+    const lineHeight = size + 1.4;
+    const labelSize = Math.max(9.5, size - .5);
+
+    function row(entries, availableWidth = sectionWidth) {
+      const spare = availableWidth - gap * (entries.length - 1);
+      let x = margin + inset;
+      const cells = entries.map(([label, value, share = 1 / entries.length]) => {
+        const cellWidth = spare * share;
+        const lines = wrap(value || 'Não informado', regular, size, cellWidth / widthScale);
+        const cell = { label, lines, x, cellWidth };
+        x += cellWidth + gap;
+        return cell;
+      });
+      const count = Math.max(...cells.map(cell => cell.lines.length));
+      return { cells, height: labelSize + 2 + count * lineHeight + rowGap };
+    }
+
+    function notes(entries) {
+      return entries.map(([label, value]) => {
+        const heading = `${label}: `;
+        const prefixWidth = bold.widthOfTextAtSize(heading, size);
+        const lines = wrap(value, regular, size, sectionWidth / widthScale, (sectionWidth - prefixWidth) / widthScale);
+        return { heading, prefixWidth, lines, height: lines.length * lineHeight + rowGap };
+      });
+    }
+
+    const birth = answer('birth').split('-').reverse().join('/');
+    const blocks = [
+      { key: 'child', rows: [
+        row([['Nome completo', answer('child')]], personalWidth),
+        row([['Nascimento', birth, .28], ['Idade', answer('age'), .20], ['Sexo', answer('sex'), .52]], personalWidth),
+        row([['Endereço completo', answer('address')]], personalWidth),
+        row([['Bairro', answer('district'), .72], ['CEP', answer('cep'), .28]], personalWidth),
+      ] },
+      { key: 'schedule', notes: notes([['Modalidade desejada', answer('schedule') || 'Não informado']]) },
+      { key: 'guardian', rows: [
+        row([['Nome completo', answer('guardian'), .63], ['Vínculo com a criança', answer('relationship'), .37]]),
+        row([['Telefone com DDD', answer('phone'), .27], ['E-mail', answer('email'), .73]]),
+      ] },
+      { key: 'allergy', notes: notes([
+        ['Alergias', statement('allergy')],
+        ['Doença crônica', statement('chronic')],
+        ['Uso contínuo de medicamentos', statement('medication')],
+        ['Deficiência ou necessidade educacional específica', statement('disability')],
+      ]) },
+      { key: 'food', notes: notes([['Restrição alimentar', statement('food')]]) },
+      { key: 'priorSchool', rows: [
+        row([['Frequenta ou já frequentou outra escola?', statement('priorSchool')], ['Já está desfraldada?', statement('toilet')]]),
+        row([['Usa chupeta?', statement('pacifier')], ['Usa mamadeira?', statement('bottle')]]),
+      ] },
+    ].map(block => {
+      const items = block.rows ?? block.notes;
+      const rowsHeight = items.reduce((total, item) => total + item.height, 0) - rowGap;
+      const minHeight = block.key === 'child' ? photoHeight : 0;
+      const height = headingHeight + 2 * bodyPadding + Math.max(minHeight, rowsHeight);
+      return { ...block, height };
     });
 
-    let from = 0;
-    while (from < rows.length) {
-      let end = from;
-      let available = cursor - bottom - headingHeight - 19;
-      while (end < rows.length && rows[end].height <= available) {
-        available -= rows[end].height;
-        end += 1;
-      }
-      if (end === from) {
-        nextPage();
-        continue;
-      }
-      drawSection(from === 0 ? title : `${title} (continuação)`, palette, rows.slice(from, end), index + 1, hasPhoto && from === 0);
-      from = end;
-      if (from < rows.length) nextPage();
-    }
+    const total = blocks.reduce((sum, block) => sum + block.height, 0) + sectionGap * (blocks.length - 1);
+    return { blocks, total, size, labelSize, lineHeight, sectionGap, bodyPadding, widthScale };
   }
 
-  const pages = pdf.getPages();
-  pages.forEach((currentPage, index) => {
-    page = currentPage;
-    horizontalRule(margin, 51, boxWidth, rule);
-    draw('Pré-matrícula sujeita à confirmação da escola.', margin, 35, 9, regular, muted);
-    const number = `Página ${index + 1} de ${pages.length}`;
-    draw(number, width - margin - regular.widthOfTextAtSize(number, 9), 35, 9, regular, muted);
-  });
+  function drawSection(block, index, layout) {
+    const palette = colors[block.key];
+    const radius = 8;
+    roundedBox(margin, cursor, boxWidth, headingHeight, radius, { color: palette.tint }, { bottomLeft: 0, bottomRight: 0 });
+    roundedBox(margin, cursor, boxWidth, block.height, radius, { borderColor: palette.accent, borderWidth: .65 });
+    roundedBox(margin + 8, cursor - 4, 13, 13, 3, { color: palette.accent });
+    draw(String(index + 1), margin + 12, cursor - 14, 8.5, bold, white);
+    draw(titles[index], margin + 28, cursor - 14.5, 11, bold, palette.accent);
+    const { size, labelSize, lineHeight, bodyPadding, sectionGap, widthScale } = layout;
+    let top = cursor - headingHeight - bodyPadding;
+    if (block.key === 'child') drawPhoto(top, palette.accent);
+
+    for (const row of block.rows ?? []) {
+      for (const { label, lines, x, cellWidth } of row.cells) {
+        draw(label, x, top - labelSize, labelSize, bold, muted);
+        const y = top - labelSize - 2 - size;
+        lines.forEach((line, index) => drawAnswer(line, x, y - index * lineHeight, size, widthScale));
+        horizontalRule(x, y - (lines.length - 1) * lineHeight - 2.7, cellWidth, rule, .4);
+      }
+      top -= row.height;
+    }
+
+    for (const item of block.notes ?? []) {
+      const x = margin + inset;
+      const y = top - size;
+      draw(item.heading, x, y, size, bold, muted);
+      item.lines.forEach((line, index) => {
+        drawAnswer(line, index === 0 ? x + item.prefixWidth : x, y - index * lineHeight, size, widthScale);
+      });
+      top -= item.height;
+    }
+    cursor -= block.height + sectionGap;
+  }
+
+  drawHeader();
+  const available = cursor - bottom;
+  // Preserve the type size first. Reduce spacing before adjusting very long answers.
+  const layouts = [
+    [11, 5, 7, 7],
+    [11, 3, 6, 6],
+    [10.5, 3, 6, 6],
+    [10, 2, 5, 5],
+    [9.5, 2, 4, 4],
+    [9.5, 1.5, 4, 4, .92],
+    [9.5, 1.5, 4, 4, .84],
+    [9.5, 1.5, 4, 4, .76],
+    [9.5, 1.5, 4, 4, .70],
+  ];
+  let layout;
+  for (const metrics of layouts) {
+    layout = buildLayout(...metrics);
+    if (layout.total <= available) break;
+  }
+  if (layout.total > available) throw new Error('O conteúdo excede o espaço disponível na ficha.');
+  layout.blocks.forEach((block, index) => drawSection(block, index, layout));
+
+  horizontalRule(margin, 35, boxWidth, rule);
+  draw('Pré-matrícula sujeita à confirmação da escola.', margin, 21, 9, regular, muted);
   return pdf.save();
 }
