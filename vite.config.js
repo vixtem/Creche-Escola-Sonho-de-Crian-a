@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         home: fileURLToPath(new URL('./index.html', import.meta.url)),
         enrollment: fileURLToPath(new URL('./pre-matricula.html', import.meta.url)),
+        portal: fileURLToPath(new URL('./portal.html', import.meta.url)),
       },
     },
   },

@@ -132,3 +132,8 @@
 .enrollment-photo p:empty { display: none; }
 .enrollment-photo .text-link { min-height: 44px; }
 .enrollment-photo img { width: 66px; height: 88px; border-radius: 6px; }
+
+.enrollment-portal-link { display:inline-flex; min-height:44px; align-items:center; margin-bottom:10px; }
+.enrollment-submit { overflow-wrap:anywhere; }
+.enrollment-submit .enrollment-field { max-width:230px; }
+.enrollment-submit p { margin-block:8px; }

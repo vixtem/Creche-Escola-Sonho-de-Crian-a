@@ -1,0 +1,40 @@
+.portal-shell { max-width: 980px; }
+.portal-intro { position: static; }
+.portal h2 { font-size: clamp(1.3rem, 4vw, 1.8rem); }
+.portal h3 { font-size: 1.14rem; }
+.portal-card, .portal-report { padding: clamp(14px, 4vw, 24px); margin-block: 12px; background: white; border: 1px solid #cadfdf; border-radius: 14px; }
+.portal-card .enrollment-grid { margin-block: 12px; }
+.portal-login { max-width: 460px; margin-inline: auto; }
+.portal-login .enrollment-field, .portal-login > button { margin-top: 12px; }
+.portal-restart { display: block; }
+.portal-stack-head, .portal-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top: 14px; }
+.portal-actions { justify-content: flex-start; }
+.portal .button { min-height: 44px; }
+.portal .text-link { min-height: 36px; }
+.portal-status { display:inline-block; margin-top: 8px; padding: 3px 9px; background:#e2f6f2; color:#215450; border-radius:6px; }
+.portal-history { margin-top: 12px; }
+.portal-history summary { font-weight: 700; cursor: pointer; }
+.portal-history ol { list-style: auto; padding-left: 1.5rem; }
+.portal-history li { margin-block: 8px; }
+.portal-history p, .portal-protocol, .portal-decision p { overflow-wrap: anywhere; }
+.portal-filters, .portal-metrics, .portal-breakdown { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-block:14px; }
+.portal-metrics > div, .portal-breakdown > section { padding:12px; background:#f3f8fa; border-radius:8px; }
+.portal-metrics strong { display:block; font-size:1.5rem; }
+.portal-breakdown dl > div { display:flex; justify-content:space-between; gap:8px; margin-top:6px; }
+.portal-breakdown dd { font-weight:700; }
+.portal-table-wrap { overflow-x:auto; }
+.portal table { width:100%; border-collapse:collapse; text-align:left; }
+.portal caption { text-align:left; font-weight:700; padding:8px 0; }
+.portal :is(th,td) { border-bottom:1px solid #d6e1e3; padding:8px; }
+.portal-decision form { margin-top:12px; }
+
+@media print {
+  .portal .portal-screen { display:none !important; }
+  .portal { background:#fff; padding:0; }
+  .portal-shell { max-width:none; }
+  .portal-report { padding:0; border:0; margin:0; }
+  .portal-report--summary .portal-table-wrap, .portal-report--list .portal-breakdown { display:none; }
+  .portal-table-wrap { overflow:visible; }
+  .portal-metrics, .portal-breakdown, .portal tr { break-inside:avoid; }
+  .portal-report p, .portal-report th, .portal-report td { color:#182338; }
+}
