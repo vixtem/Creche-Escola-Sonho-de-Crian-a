@@ -161,12 +161,14 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
       const cells = entries.map(([label, value, share = 1 / entries.length]) => {
         const cellWidth = spare * share;
         const lines = wrap(value || 'Não informado', regular, size, cellWidth / widthScale);
-        const cell = { label, lines, x, cellWidth };
+        const labelLines = wrap(label, bold, labelSize, cellWidth);
+        const cell = { labelLines, lines, x, cellWidth };
         x += cellWidth + gap;
         return cell;
       });
-      const count = Math.max(...cells.map(cell => cell.lines.length));
-      return { cells, height: labelSize + 2 + count * lineHeight + rowGap };
+      const height = Math.max(...cells.map(({ labelLines, lines }) =>
+        labelLines.length * (labelSize + 1) + 1 + lines.length * lineHeight));
+      return { cells, height: height + rowGap };
     }
 
     function notes(entries) {
@@ -221,15 +223,16 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     roundedBox(margin, cursor, boxWidth, block.height, radius, { borderColor: palette.accent, borderWidth: .65 });
     roundedBox(margin + 8, cursor - 4, 13, 13, 3, { color: palette.accent });
     draw(String(index + 1), margin + 12, cursor - 14, 8.5, bold, white);
-    draw(titles[index], margin + 28, cursor - 14.5, 11, bold, palette.accent);
+    draw(titles[index], margin + 28, cursor - 15, 12, bold, palette.accent);
     const { size, labelSize, lineHeight, bodyPadding, sectionGap, widthScale } = layout;
     let top = cursor - headingHeight - bodyPadding;
     if (block.key === 'child') drawPhoto(top, palette.accent);
 
     for (const row of block.rows ?? []) {
-      for (const { label, lines, x, cellWidth } of row.cells) {
-        draw(label, x, top - labelSize, labelSize, bold, muted);
-        const y = top - labelSize - 2 - size;
+      for (const { labelLines, lines, x, cellWidth } of row.cells) {
+        const labelStep = labelSize + 1;
+        labelLines.forEach((label, index) => draw(label, x, top - labelSize - index * labelStep, labelSize, bold, muted));
+        const y = top - labelLines.length * labelStep - 1 - size;
         lines.forEach((line, index) => drawAnswer(line, x, y - index * lineHeight, size, widthScale));
         horizontalRule(x, y - (lines.length - 1) * lineHeight - 2.7, cellWidth, rule, .4);
       }
@@ -252,6 +255,9 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
   const available = cursor - bottom;
   // Preserve the type size first. Reduce spacing before adjusting very long answers.
   const layouts = [
+    [12.5, 6, 8, 8],
+    [12, 5, 7, 7],
+    [11.5, 5, 7, 7],
     [11, 5, 7, 7],
     [11, 3, 6, 6],
     [10.5, 3, 6, 6],
@@ -268,7 +274,12 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     if (layout.total <= available) break;
   }
   if (layout.total > available) throw new Error('O conteúdo excede o espaço disponível na ficha.');
-  layout.blocks.forEach((block, index) => drawSection(block, index, layout));
+  // Distribute unused space across all sections while preserving a gap before the footer.
+  const extraPadding = Math.min(9, Math.max(0, (available - layout.total - 12) / (2 * layout.blocks.length)));
+  layout.bodyPadding += extraPadding;
+  layout.blocks.forEach((block, index) => {
+    drawSection({ ...block, height: block.height + 2 * extraPadding }, index, layout);
+  });
 
   horizontalRule(margin, 35, boxWidth, rule);
   draw('Pré-matrícula sujeita à confirmação da escola.', margin, 21, 9, regular, muted);
