@@ -371,7 +371,7 @@ function Portal() {
       <p>O envio online e o acompanhamento estarão disponíveis após a ativação pela escola.</p>
       <a className="button" href="./pre-matricula.html">Abrir formulário em PDF</a>
     </section>}
-    {client && (session === null || recovery) && <PortalLogin client={client} staff={staffMode && !recovery}
+    {client && (session === null || recovery) && <PortalLogin client={client} staff={staffMode}
       recovery={recovery} onRecovered={() => setRecovery(false)} onDemo={enterDemo} />}
     {client && session && !recovery && (!staffMode ? <Family client={client} user={session.user} key={session.user.id} />
       : allowed === true ? <Secretariat client={client} key={session.user.id} />

@@ -33,11 +33,19 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const activeMode = recovery ? 'reset' : mode;
+  const staffOtp = staff && activeMode === 'otp';
   const newPassword = activeMode === 'signup' || activeMode === 'reset';
-  const copy = staff
-    ? { title: sent ? 'Confira seu e-mail' : 'Acesso da equipe', button: sent ? 'Entrar com código' : 'Enviar acesso por e-mail',
-        detail: 'Entre com um e-mail autorizado pela escola para analisar as solicitações.' }
-    : familyCopy[activeMode];
+  let copy = familyCopy[activeMode];
+  if (staffOtp) {
+    copy = { title: sent ? 'Confira seu e-mail' : 'Acesso por e-mail',
+      button: sent ? 'Entrar com código' : 'Enviar acesso por e-mail',
+      detail: 'Use o e-mail autorizado pela escola para receber um link ou código.' };
+  } else if (staff && activeMode === 'enter') {
+    copy = { title: 'Acesso da equipe', button: 'Entrar',
+      detail: 'Entre com seu e-mail autorizado e senha para analisar as solicitações.' };
+  } else if (staff && activeMode === 'reset') {
+    copy = { ...copy, detail: 'Escolha uma nova senha para voltar a acessar a Secretaria.' };
+  }
 
   function changeMode(next) {
     setMode(next);
@@ -60,10 +68,10 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
     setError('');
     setNotice('');
     try {
-      if (staff && sent) {
+      if (staffOtp && sent) {
         const { error } = await client.auth.verifyOtp({ email: address, token: form.get('code').trim(), type: 'email' });
         if (error) throw error;
-      } else if (staff) {
+      } else if (staffOtp) {
         const { error } = await client.auth.signInWithOtp({
           email: address, options: { shouldCreateUser: false, emailRedirectTo: returnTo(true) },
         });
@@ -76,7 +84,7 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
         changeMode('enter');
         setNotice('Confira seu e-mail para confirmar o cadastro.');
       } else if (activeMode === 'forgot') {
-        const { error } = await client.auth.resetPasswordForEmail(address, { redirectTo: returnTo(false) });
+        const { error } = await client.auth.resetPasswordForEmail(address, { redirectTo: returnTo(staff) });
         if (error) throw error;
         setNotice('Se o e-mail estiver cadastrado, você receberá um link de recuperação.');
       } else if (activeMode === 'reset') {
@@ -90,8 +98,8 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
     } catch (err) {
       if (err.code === 'email_not_confirmed') setError('Confirme o e-mail de cadastro antes de entrar.');
       else if (err.code === 'weak_password') setError('Escolha uma senha mais forte.');
-      else if (staff && sent) setError('Código inválido ou expirado. Solicite um novo acesso por e-mail.');
-      else if (activeMode === 'enter' && !staff) setError('Não foi possível entrar. Confira o e-mail e a senha.');
+      else if (staffOtp && sent) setError('Código inválido ou expirado. Solicite um novo acesso por e-mail.');
+      else if (activeMode === 'enter') setError('Não foi possível entrar. Confira o e-mail e a senha.');
       else setError('Não foi possível concluir. Tente novamente em alguns instantes.');
     } finally {
       setBusy(false);
@@ -111,12 +119,12 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
           <input id="portal-email" name="email" type="email" autoComplete="username" maxLength={254} required
             readOnly={sent} value={email} onChange={e => setEmail(e.target.value)} />
         </div>}
-        {!staff && activeMode !== 'forgot' && <PasswordField key={activeMode} name="password"
+        {!staffOtp && activeMode !== 'forgot' && <PasswordField key={activeMode} name="password"
           label={newPassword ? 'Nova senha' : 'Senha'} minimum={newPassword ? minPassword : undefined}
           autoComplete={newPassword ? 'new-password' : 'current-password'} />}
         {newPassword && <PasswordField key="confirm" name="confirm-password" label="Confirme a senha"
           minimum={minPassword} autoComplete="new-password" />}
-        {staff && sent && <div className="enrollment-field">
+        {staffOtp && sent && <div className="enrollment-field">
           <label htmlFor="portal-code">Código recebido por e-mail</label>
           <input id="portal-code" name="code" inputMode="numeric" autoComplete="one-time-code"
             pattern="[0-9]{6,10}" maxLength={10} required />
@@ -128,14 +136,15 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
       {error && <p className="portal-login-error" role="alert">{error}</p>}
       {notice && <p className="portal-login-feedback" role="status">{notice}</p>}
     </form>
-    {staff && sent && <button className="text-link" type="button" disabled={busy} onClick={() => changeMode('enter')}>
+    {staffOtp && sent && <button className="text-link" type="button" disabled={busy} onClick={() => changeMode('otp')}>
       Trocar e-mail ou solicitar novo acesso
     </button>}
-    {!staff && activeMode === 'enter' && <div className="portal-login-links">
-      <button className="text-link" type="button" disabled={busy} onClick={() => changeMode('signup')}>Criar conta</button>
+    {activeMode === 'enter' && <div className="portal-login-links">
+      {staff ? <button className="text-link" type="button" disabled={busy} onClick={() => changeMode('otp')}>Acessar por link ou código</button>
+        : <button className="text-link" type="button" disabled={busy} onClick={() => changeMode('signup')}>Criar conta</button>}
       <button className="text-link" type="button" disabled={busy} onClick={() => changeMode('forgot')}>Esqueci minha senha</button>
     </div>}
-    {!staff && ['signup', 'forgot'].includes(activeMode) && <button className="text-link" type="button"
+    {['signup', 'forgot', 'otp'].includes(activeMode) && <button className="text-link" type="button"
       disabled={busy} onClick={() => changeMode('enter')}>Voltar à entrada</button>}
     {client.demo && <div className="portal-login-demo">
       <div><FlaskConical size={19} aria-hidden="true" /><p>O login real está desativado durante os testes.</p></div>
