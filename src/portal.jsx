@@ -4,65 +4,16 @@ import { ArrowLeft, LogOut, Printer } from 'lucide-react';
 import { ageOnDate, sections } from './enrollment-fields';
 import { allRows, currentSchoolYear, dateInSchool, formatDate, getPortalClient, states, transitions } from './portal-api';
 import { school } from './school';
+import { PortalLogin } from './portal-login';
 import './styles.css';
 import './enrollment.css';
 import './portal.css';
 
 const staffMode = new URLSearchParams(window.location.search).get('area') === 'secretaria';
+const demoAccessKey = `cesc-portal-demo-access-${staffMode ? 'staff' : 'family'}`;
 const schedules = sections[1].fields[0].options;
 const historyFields = 'id, status, family_message, changed_at';
 const today = dateInSchool();
-
-function SignIn({ client }) {
-  const [email, setEmail] = useState('');
-  const [token, setToken] = useState('');
-  const [sent, setSent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
-
-  async function submit(event) {
-    event.preventDefault();
-    setBusy(true);
-    setNotice('');
-    try {
-      if (!sent) {
-        const { error } = await client.auth.signInWithOtp({
-          email: email.trim(), options: { shouldCreateUser: !staffMode },
-        });
-        if (error) throw error;
-        setSent(true);
-        setNotice('Código enviado. Confira seu e-mail e a caixa de spam.');
-      } else {
-        const { error } = await client.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: 'email' });
-        if (error) throw error;
-      }
-    } catch {
-      setNotice(sent
-        ? 'Código incorreto ou expirado. Confira o e-mail ou solicite um novo código.'
-        : 'Não foi possível enviar o código. Confira o endereço e tente novamente em alguns instantes.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return <form className="portal-card portal-login" onSubmit={submit}>
-    <h2>Acesse com seu e-mail</h2>
-    <div className="enrollment-field">
-      <label htmlFor="portal-email">E-mail</label>
-      <input id="portal-email" type="email" autoComplete="email" maxLength={254} required readOnly={sent}
-        value={email} onChange={e => setEmail(e.target.value)} />
-    </div>
-    {sent && <div className="enrollment-field">
-      <label htmlFor="portal-token">Código recebido por e-mail</label>
-      <input id="portal-token" inputMode="numeric" autoComplete="one-time-code" required
-        pattern="[0-9]{6,10}" maxLength={10} value={token} onChange={e => setToken(e.target.value)} />
-    </div>}
-    <button type="submit" className="button" disabled={busy}>{sent ? 'Entrar' : 'Enviar código'}</button>
-    {sent && <button className="text-link portal-restart" disabled={busy} type="button"
-      onClick={() => { setSent(false); setToken(''); setNotice(''); }}>Trocar e-mail ou pedir outro código</button>}
-    <p role="status">{notice}</p>
-  </form>;
-}
 
 function History({ client, item }) {
   const [entries, setEntries] = useState(null);
@@ -345,6 +296,7 @@ function Portal() {
   const [client, setClient] = useState(undefined);
   const [session, setSession] = useState(undefined);
   const [permission, setPermission] = useState(null);
+  const [recovery, setRecovery] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -355,11 +307,14 @@ function Portal() {
       setClient(api);
       if (!api) return;
       if (api.demo) {
-        setSession(api.demoSession);
+        setSession(sessionStorage.getItem(demoAccessKey) === 'open' ? api.demoSession : null);
         return;
       }
       subscription = api.auth.onAuthStateChange((event, value) => {
-        if (active) setSession(value);
+        if (!active) return;
+        if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+        if (event === 'SIGNED_OUT') setRecovery(false);
+        setSession(value);
       }).data.subscription;
     }).catch(() => { if (active) setError('Não foi possível abrir o portal. Recarregue a página para tentar novamente.'); });
     return () => { active = false; subscription?.unsubscribe(); };
@@ -378,7 +333,17 @@ function Portal() {
     return () => { active = false; };
   }, [client, session?.user?.id]);
 
+  function enterDemo() {
+    sessionStorage.setItem(demoAccessKey, 'open');
+    setSession(client.demoSession);
+  }
+
   async function leave() {
+    if (client.demo) {
+      sessionStorage.removeItem(demoAccessKey);
+      setSession(null);
+      return;
+    }
     const { error } = await client.auth.signOut({ scope: 'local' });
     if (error) setError('Não foi possível encerrar a sessão. Tente novamente.');
   }
@@ -393,7 +358,7 @@ function Portal() {
       </header>
       <div className="portal-stack-head portal-session">
         <a className="text-link" href={staffMode ? './portal.html' : './portal.html?area=secretaria'}>{staffMode ? 'Portal da família' : 'Acesso da secretaria'}</a>
-        {session && !client?.demo && <button type="button" className="text-link" onClick={leave}><LogOut size={17}/> Sair</button>}
+        {session && <button type="button" className="text-link" onClick={leave}><LogOut size={17}/> {client?.demo ? 'Voltar ao login' : 'Sair'}</button>}
       </div>
     </div>
     {client?.demo && <p className="enrollment-privacy portal-demo-notice">
@@ -406,8 +371,9 @@ function Portal() {
       <p>O envio online e o acompanhamento estarão disponíveis após a ativação pela escola.</p>
       <a className="button" href="./pre-matricula.html">Abrir formulário em PDF</a>
     </section>}
-    {client && session === null && <SignIn client={client} />}
-    {client && session && (!staffMode ? <Family client={client} user={session.user} key={session.user.id} />
+    {client && (session === null || recovery) && <PortalLogin client={client} staff={staffMode && !recovery}
+      recovery={recovery} onRecovered={() => setRecovery(false)} onDemo={enterDemo} />}
+    {client && session && !recovery && (!staffMode ? <Family client={client} user={session.user} key={session.user.id} />
       : allowed === true ? <Secretariat client={client} key={session.user.id} />
       : <p role="status">{allowed === undefined ? 'Verificando acesso…'
         : allowed === 'error' ? 'Não foi possível verificar o acesso. Recarregue a página.'

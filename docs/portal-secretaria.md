@@ -3,7 +3,7 @@
 O site está no GitHub Pages. `public/enrollment-config.json` contém apenas a URL do projeto, a chave publicável e o controle de ativação. Chaves secretas pertencem ao ambiente do Supabase.
 
 1. Aplique as migrações na ordem em que aparecem em `supabase/migrations`. No projeto hospedado da escola, confirme as migrações registradas antes de aplicar.
-2. Em Authentication, configure SMTP próprio, o remetente e os limites de envio da escola. Nas mensagens de confirmação de cadastro e de acesso por e-mail, inclua `{{ .Token }}` para o código digitado na tela, em vez do link de confirmação. Os e-mails das famílias precisam ser verificados antes de qualquer envio.
+2. Em Authentication, configure SMTP próprio, o remetente e os limites de envio da escola. Use `{{ .ConfirmationURL }}` nos modelos de confirmação de cadastro e recuperação de senha das famílias. Para a Secretaria, o modelo de acesso por e-mail aceita o link `{{ .ConfirmationURL }}` ou o código `{{ .Token }}`. Autorize os endereços exatos do portal da Família e da Secretaria em Authentication → URL Configuration. Os e-mails das famílias precisam ser verificados antes de qualquer envio.
 3. Autorize apenas os membros designados pela creche após eles confirmarem o e-mail. Execute no SQL Editor com o e-mail confirmado da pessoa autorizada:
 
    ```sql

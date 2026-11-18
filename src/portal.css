@@ -40,3 +40,35 @@
 }
 
 .portal-demo-notice { border: 1px solid #d8b55f; background: #fff5d8; color: #563d16; }
+
+.portal-login {
+  --login-accent: #13685d;
+  --login-tint: #e2f6f2;
+  max-width: 510px;
+  margin: 18px auto;
+  padding: clamp(18px, 4vw, 30px);
+  background: #fff;
+  border: 1px solid #ccdedf;
+  border-top: 4px solid var(--login-accent);
+  border-radius: 16px;
+  box-shadow: 0 12px 34px #24355312;
+}
+.portal-login--staff { --login-accent: #244e85; --login-tint: #e8f1fd; }
+.portal-login-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+.portal-login-heading h2 { margin: 0 0 4px; }
+.portal-login-heading p { margin: 0; line-height: 1.45; }
+.portal-login-icon { display: grid; place-items: center; flex: 0 0 48px; height: 48px; border-radius: 12px; background: var(--login-tint); color: var(--login-accent); }
+.portal-login-fields { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.portal-login .enrollment-field { margin: 0; }
+.portal-login-submit { width: 100%; display: flex; justify-content: center; gap: 10px; background: var(--login-accent); }
+.portal-login button:disabled { cursor: default; opacity: .62; }
+.portal-password { position: relative; }
+.portal-password input { padding-right: 52px; }
+.portal-password button { position: absolute; inset: 0 0 0 auto; display: grid; place-items: center; width: 48px; background: transparent; color: var(--login-accent); }
+.portal-login-links { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.portal-login-links button { color: var(--login-accent); }
+.portal-login-error { color: #97243a; margin-top: 10px; }
+.portal-login-feedback { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+.portal-login-demo { margin-top: 16px; padding: 12px; border-radius: 10px; background: var(--login-tint); }
+.portal-login-demo > div { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; color: var(--login-accent); }
+.portal-login-demo p { margin: 0; }
