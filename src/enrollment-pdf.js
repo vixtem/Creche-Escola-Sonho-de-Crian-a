@@ -252,10 +252,10 @@ async function createSheet(answers, fonts, {
     cursor -= block.height + sectionGap;
   }
 
-  function addPage() {
+  function addPage(withHeader = true) {
     page = pdf.addPage([width, height]);
     cursor = height - margin;
-    drawHeader();
+    if (withHeader) drawHeader();
   }
 
   function drawFooter(note, numbering) {
@@ -266,14 +266,14 @@ async function createSheet(answers, fonts, {
     }
   }
 
-  function paginate(layout, available) {
+  function paginate(layout, firstPageSpace, continuationSpace) {
     const { blockHeight, measureRow, sectionGap } = layout;
     const sheets = [[]];
-    let remaining = available;
+    let remaining = firstPageSpace;
 
     function nextSheet() {
       sheets.push([]);
-      remaining = available;
+      remaining = continuationSpace;
     }
 
     for (const block of layout.blocks) {
@@ -281,7 +281,7 @@ async function createSheet(answers, fonts, {
       let continued = false;
       while (rows.length) {
         const hasPhoto = block.photo && !continued;
-        if (remaining < available && blockHeight([rows[0]], hasPhoto) > remaining) nextSheet();
+        if (sheets.at(-1).length && blockHeight([rows[0]], hasPhoto) > remaining) nextSheet();
         let fragment = [];
         while (rows.length && blockHeight([...fragment, rows[0]], hasPhoto) <= remaining) {
           fragment.push(rows.shift());
@@ -311,9 +311,10 @@ async function createSheet(answers, fonts, {
 
   addPage();
   if (schoolSections) {
-    const pageTop = cursor;
-    const available = pageTop - bottom;
+    const firstPageSpace = cursor - bottom;
+    const continuationSpace = height - margin - bottom;
     const profiles = [
+      [11.5, 4, 6, 7],
       [11, 4, 6, 7],
       [10.5, 3.5, 5, 6],
       [10, 3, 5, 6],
@@ -326,7 +327,7 @@ async function createSheet(answers, fonts, {
     let scale = 1;
     for (const metrics of profiles) {
       layout = buildLayout(...metrics);
-      sheets = paginate(layout, available);
+      sheets = paginate(layout, firstPageSpace, continuationSpace);
       if (sheets.length <= 2) break;
     }
     if (sheets.length > 2) {
@@ -335,15 +336,15 @@ async function createSheet(answers, fonts, {
       do {
         scale /= 1.05;
         layout = buildLayout(...compact, boxWidth / scale);
-        sheets = paginate(layout, available / scale);
+        sheets = paginate(layout, firstPageSpace / scale, continuationSpace / scale);
       } while (sheets.length > 2);
     }
 
     sheets.forEach((blocks, index) => {
-      if (index > 0) addPage();
+      if (index > 0) addPage(false);
       if (scale < 1) {
         page.pushOperators(pushGraphicsState(), concatTransformationMatrix(
-          scale, 0, 0, scale, margin * (1 - scale), pageTop * (1 - scale),
+          scale, 0, 0, scale, margin * (1 - scale), cursor * (1 - scale),
         ));
       }
       blocks.forEach(block => drawSection(block, layout));
