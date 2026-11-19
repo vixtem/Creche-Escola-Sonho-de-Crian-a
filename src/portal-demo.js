@@ -23,7 +23,10 @@ function seed() {
 
 function read() {
   const stored = sessionStorage.getItem(key);
-  return stored ? JSON.parse(stored) : seed();
+  if (stored) return JSON.parse(stored);
+  const db = seed();
+  save(db);
+  return db;
 }
 
 function save(db) {
@@ -100,7 +103,22 @@ function decide(db, params) {
   if (!transitions[application.status]?.includes(params.p_next)
     || (params.p_next === 'documents' && !params.p_message?.trim())) return failure('22023');
   application.status = params.p_next;
+  application.updated_at = now();
   history(db, application.id, params.p_next, params.p_message);
+  save(db);
+  return result(null);
+}
+
+function editApplication(db, { p_application, p_expected_updated_at, ...fields }) {
+  const application = db.enrollment_applications.find(row => row.id === p_application);
+  if (!application) return failure('P0002');
+  if ((application.updated_at || application.created_at) !== p_expected_updated_at) return failure('40001');
+  if (db.enrollment_applications.some(row => row.id !== application.id && row.child_id === application.child_id
+    && row.school_year === fields.p_school_year)) return failure('23505');
+  for (const name of ['child_name', 'birth_date', 'school_year', 'schedule', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'guardian_email']) {
+    application[name] = fields[`p_${name}`];
+  }
+  application.updated_at = now();
   save(db);
   return result(null);
 }
@@ -113,6 +131,7 @@ export function createDemoClient() {
     rpc(name, params) {
       if (name === 'submit_enrollment') return { async single() { return submit(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
+      if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
       return Promise.resolve(failure('42883'));
     },
   };

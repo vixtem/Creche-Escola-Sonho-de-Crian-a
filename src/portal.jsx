@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LogOut, Printer } from 'lucide-react';
 import { ageOnDate, sections } from './enrollment-fields';
@@ -18,6 +18,16 @@ const secretariatTabs = [
 ];
 const historyFields = 'id, status, family_message, changed_at';
 const today = dateInSchool();
+const sheetFields = [
+  { name: 'child_name', label: 'Nome completo da criança', input: { maxLength: 120 } },
+  { name: 'birth_date', label: 'Data de nascimento', input: { type: 'date', min: '1900-01-01', max: today } },
+  { name: 'school_year', label: 'Ano letivo', input: { type: 'number', min: 2020, max: 2100 } },
+  { name: 'schedule', label: 'Turno', options: schedules },
+  { name: 'guardian_name', label: 'Nome do responsável', input: { maxLength: 120 } },
+  { name: 'guardian_relationship', label: 'Parentesco ou vínculo', input: { maxLength: 80 } },
+  { name: 'guardian_phone', label: 'Telefone com DDD', input: { type: 'tel', maxLength: 24 } },
+  { name: 'guardian_email', label: 'E-mail de contato', input: { type: 'email', maxLength: 254 } },
+];
 
 function History({ client, item }) {
   const [entries, setEntries] = useState(null);
@@ -164,6 +174,7 @@ function Decision({ client, item, onSaved }) {
 
   return <div className="portal-decision">
     <h3>{item.child_name}</h3>
+    <p><strong>Nascimento:</strong> {formatDate(item.birth_date)} · <strong>Ano letivo:</strong> {item.school_year} · <strong>Turno:</strong> {item.schedule}</p>
     <p><strong>Responsável:</strong> {item.guardian_name} ({item.guardian_relationship}) · {item.guardian_phone} · {item.guardian_email}</p>
     <p><strong>Protocolo:</strong> <code>{item.protocol}</code></p>
     <History client={client} item={item} />
@@ -187,6 +198,67 @@ function Decision({ client, item, onSaved }) {
   </div>;
 }
 
+function EditApplication({ client, item, onCancel, onSaved, onReload }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function save(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const values = Object.fromEntries(sheetFields.map(({ name }) => [name, form.get(name).trim()]));
+    if (Object.values(values).includes('')) {
+      setError({ message: 'Preencha todos os campos da ficha.' });
+      return;
+    }
+    if (!/^\+?[0-9 ()-]+$/.test(values.guardian_phone) || !/^\d{10,13}$/.test(values.guardian_phone.replace(/\D/g, ''))) {
+      setError({ message: 'Informe um telefone válido com DDD.' });
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const schoolYear = Number(values.school_year);
+      const { error } = await client.rpc('edit_enrollment_application', {
+        p_application: item.id,
+        p_expected_updated_at: item.updated_at || item.created_at,
+        ...Object.fromEntries(Object.entries({ ...values, school_year: schoolYear }).map(([key, value]) => [`p_${key}`, value])),
+      });
+      if (error) throw error;
+      onSaved(schoolYear);
+    } catch (err) {
+      const messages = {
+        '40001': 'A ficha mudou desde que foi aberta. Recarregue a ficha para conferir a versão atual.',
+        '23505': 'Já existe uma ficha desta criança no ano letivo informado.',
+        '22023': 'Confira os dados informados na ficha.',
+        '42501': 'A conta atual não tem permissão para editar esta ficha.',
+        P0002: 'Esta ficha não está mais disponível.',
+      };
+      setError({ code: err.code, message: messages[err.code] || 'Não foi possível salvar a ficha. Tente novamente.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <form onSubmit={save}>
+    <h3>Editar ficha de {item.child_name}</h3>
+    <fieldset className="enrollment-grid portal-edit-fields" disabled={busy}>
+      {sheetFields.map(({ name, label, input, options }) => <div className="enrollment-field" key={name}>
+        <label htmlFor={`sheet-${name}`}>{label}</label>
+        {options ? <select id={`sheet-${name}`} name={name} defaultValue={item[name]} required>
+          {options.map(option => <option key={option}>{option}</option>)}
+        </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required />}
+      </div>)}
+    </fieldset>
+    <div className="portal-actions">
+      <button className="button" disabled={busy || error?.code === '40001'}>{busy ? 'Salvando…' : 'Salvar alterações'}</button>
+      {error?.code === '40001' && <button type="button" className="text-link" onClick={onReload}>Recarregar ficha</button>}
+      <button type="button" className="text-link" disabled={busy} onClick={onCancel}>Cancelar</button>
+    </div>
+    <p role="status">{error?.message}</p>
+  </form>;
+}
+
 function Secretariat({ client }) {
   const [tab, setTab] = useState(0);
   const [records, setRecords] = useState([]);
@@ -195,11 +267,13 @@ function Secretariat({ client }) {
   const [status, setStatus] = useState('');
   const [schedule, setSchedule] = useState('');
   const [age, setAge] = useState('');
-  const [visibleId, setVisibleId] = useState(null);
+  const [sheet, setSheet] = useState(null);
+  const [notice, setNotice] = useState('');
   const [report, setReport] = useState('summary');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState(0);
+  const sheetRef = useRef(null);
   const referenceDate = dateInSchool();
 
   useEffect(() => {
@@ -209,7 +283,7 @@ function Secretariat({ client }) {
     setError('');
     Promise.all([
       allRows(() => client.from('enrollment_applications')
-        .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, status, created_at')
+        .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, status, created_at, updated_at')
         .eq('school_year', year).order('created_at').order('id')),
       allRows(() => client.from('enrollment_applications').select('school_year').order('school_year').order('id')),
     ]).then(([items, historic]) => {
@@ -220,6 +294,10 @@ function Secretariat({ client }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [client, year, refresh]);
+
+  useEffect(() => {
+    if (sheet && tab === 1 && !loading) sheetRef.current?.focus();
+  }, [sheet, tab, loading]);
 
   const items = records.map(item => ({ ...item, age: ageOnDate(item.birth_date, referenceDate) }));
   const ages = [...new Set(items.map(item => item.age).filter(value => value !== null))].sort((a,b) => a-b);
@@ -232,14 +310,32 @@ function Secretariat({ client }) {
   const byStatus = counts(Object.keys(states), item => item.status);
   const bySchedule = counts(schedules, item => item.schedule);
   const byAge = counts(ages, item => item.age);
-  const showing = filtered.find(item => item.id === visibleId);
+  const showing = items.find(item => item.id === sheet?.id);
+
+  function openSheet(item, mode) {
+    setNotice('');
+    setSheet(sheet?.id === item.id && sheet.mode === mode ? null : { id: item.id, mode });
+  }
+
+  function reload() {
+    setRefresh(value => value + 1);
+  }
+
+  function savedSheet(id, schoolYear) {
+    setSheet(current => current?.id === id && current.mode === 'edit' ? null : current);
+    setNotice(schoolYear === year ? 'Alterações salvas.' : `Alterações salvas. A ficha passou para o ano letivo ${schoolYear}.`);
+    reload();
+  }
 
   function renderStudentRows(rows, showDecision) {
     return rows.map(item => <tr key={item.id}>
-      <td>{item.child_name}</td><td>{item.age ?? '—'}</td><td>{item.schedule}</td><td>{states[item.status]}</td>
+      <td>{showDecision ? <button type="button" className="portal-student-name"
+        aria-expanded={sheet?.id === item.id && sheet.mode === 'view'}
+        onClick={() => openSheet(item, 'view')}>{item.child_name}</button> : item.child_name}</td>
+      <td>{item.age ?? '—'}</td><td>{item.schedule}</td><td>{states[item.status]}</td>
       {showDecision && <td><button type="button" className="text-link"
-        aria-expanded={visibleId === item.id} aria-label={`Ficha de ${item.child_name}`}
-        onClick={() => setVisibleId(visibleId === item.id ? null : item.id)}>{visibleId === item.id ? 'Fechar' : 'Abrir'}</button></td>}
+        aria-expanded={sheet?.id === item.id && sheet.mode === 'edit'} aria-label={`Editar ficha de ${item.child_name}`}
+        onClick={() => openSheet(item, 'edit')}>Editar</button></td>}
     </tr>);
   }
 
@@ -268,7 +364,7 @@ function Secretariat({ client }) {
       <h2>Filtros de matrículas</h2>
       <div className="portal-filters">
         <div className="enrollment-field"><label htmlFor="filter-year">Ano letivo</label>
-          <select id="filter-year" value={year} onChange={e => { setYear(Number(e.target.value)); setAge(''); setVisibleId(null); }}>
+          <select id="filter-year" value={year} onChange={e => { setYear(Number(e.target.value)); setAge(''); setSheet(null); setNotice(''); }}>
             {(years.length ? years : [year]).map(value => <option key={value} value={value}>{value}</option>)}
           </select></div>
         <div className="enrollment-field"><label htmlFor="filter-status">Situação</label>
@@ -285,7 +381,7 @@ function Secretariat({ client }) {
           </select></div>
       </div>
       <div className="portal-actions">
-        <button className="text-link" onClick={() => setRefresh(value => value + 1)}>Atualizar</button>
+        <button className="text-link" onClick={reload}>Atualizar</button>
       </div>
       <p role="status">{error || (loading ? 'Carregando solicitações…' : '')}</p>
     </section>
@@ -316,6 +412,7 @@ function Secretariat({ client }) {
     <section className="portal-card portal-tab-panel portal-students-panel" role="tabpanel" id="staff-panel-students"
       aria-labelledby="staff-tab-students" data-active={tab === 1} tabIndex={0}>
       <h2 className="portal-screen">Alunos</h2>
+      <p className="portal-screen" role="status">{notice}</p>
       {!loading && !error && <>
         <div className="portal-table-wrap">{filtered.length ? <table>
           <caption>Solicitações no filtro</caption>
@@ -323,8 +420,11 @@ function Secretariat({ client }) {
           <tbody className="portal-screen">{renderStudentRows(screenRows, true)}</tbody>
           <tbody className="portal-print-rows">{renderStudentRows(filtered, false)}</tbody>
         </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
-        {showing && <aside className="portal-card portal-screen">
-          <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={() => setRefresh(value => value + 1)} />
+        {showing && <aside className="portal-card portal-screen" ref={sheetRef} tabIndex={-1} aria-label="Ficha do aluno">
+          {sheet.mode === 'edit'
+            ? <EditApplication key={`${showing.id}-${showing.updated_at}`} client={client} item={showing}
+              onCancel={() => setSheet(null)} onSaved={schoolYear => savedSheet(showing.id, schoolYear)} onReload={reload} />
+            : <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={reload} />}
         </aside>}
       </>}
     </section>
