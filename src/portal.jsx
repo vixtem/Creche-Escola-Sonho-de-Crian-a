@@ -139,12 +139,39 @@ async function loadEnrollmentRecord(client, applicationId) {
   return data;
 }
 
+function DownloadEnrollmentButton({ client, item, compact = false }) {
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
+  async function download() {
+    if (downloading) return;
+    setDownloading(true);
+    setDownloadError('');
+    try {
+      const [{ downloadSchoolEnrollmentPdf }, record] = await Promise.all([
+        import('./enrollment-download'), loadEnrollmentRecord(client, item.id),
+      ]);
+      await downloadSchoolEnrollmentPdf(item, record);
+    } catch {
+      setDownloadError('Não foi possível gerar o PDF. Tente novamente.');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return <>
+    <button className={compact ? 'text-link' : 'button'} type="button" disabled={downloading}
+      aria-label={downloading ? 'Gerando PDF' : `Baixar PDF da ficha de ${item.child_name}`} onClick={download}>
+      {downloading ? 'Gerando PDF…' : compact ? 'Baixar PDF' : 'Baixar ficha completa em PDF'}
+    </button>
+    {downloadError && <p role="alert">{downloadError}</p>}
+  </>;
+}
+
 function SchoolEnrollmentDetails({ client, item }) {
   const [record, setRecord] = useState(undefined);
   const [error, setError] = useState('');
   const loading = useRef(false);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState('');
 
   async function read(event) {
     if (!event.currentTarget.open || record !== undefined || loading.current) return;
@@ -159,28 +186,14 @@ function SchoolEnrollmentDetails({ client, item }) {
     }
   }
 
-  async function download() {
-    setDownloading(true);
-    setDownloadError('');
-    try {
-      const { downloadSchoolEnrollmentPdf } = await import('./enrollment-download');
-      await downloadSchoolEnrollmentPdf(item, record);
-    } catch {
-      setDownloadError('Não foi possível gerar o PDF. Tente novamente.');
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   const values = { ...record?.details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
 
   return <details className="portal-history" onToggle={read}>
     <summary>Dados da ficha de matrícula</summary>
     <p role="status">{error || (record === undefined ? 'Carregando ficha…' : record === null ? 'Ainda não há dados complementares nesta ficha.' : '')}</p>
     {record !== undefined && <div className="portal-actions">
-      <button className="button" type="button" disabled={downloading} onClick={download}>{downloading ? 'Gerando PDF…' : 'Baixar ficha completa em PDF'}</button>
+      <DownloadEnrollmentButton client={client} item={item} />
     </div>}
-    {downloadError && <p role="alert">{downloadError}</p>}
     {record && <p>Dados atualizados em {formatDate(record.record_updated_at)}.</p>}
     {record?.photo && <img className="portal-enrollment-photo" src={record.photo} alt="Foto 3×4 da criança" />}
     {record && staffEnrollmentSections.map(({ title, fields }) => {
@@ -437,9 +450,12 @@ function Secretariat({ client }) {
         aria-expanded={sheet?.id === item.id && sheet.mode === 'view'}
         onClick={() => openSheet(item, 'view')}>{item.child_name}</button> : item.child_name}</td>
       <td>{item.age ?? '—'}</td><td>{studyModes[item.schedule]}</td><td>{schoolUnits[item.unit] || reportUnits.unspecified}</td><td>{states[item.status]}</td>
-      {showDecision && <td><button type="button" className="text-link"
-        aria-expanded={sheet?.id === item.id && sheet.mode === 'edit'} aria-label={`Editar ficha de ${item.child_name}`}
-        onClick={() => openSheet(item, 'edit')}>Editar</button></td>}
+      {showDecision && <>
+        <td><button type="button" className="text-link"
+          aria-expanded={sheet?.id === item.id && sheet.mode === 'edit'} aria-label={`Editar ficha de ${item.child_name}`}
+          onClick={() => openSheet(item, 'edit')}>Editar</button></td>
+        <td><DownloadEnrollmentButton client={client} item={item} compact /></td>
+      </>}
     </tr>);
   }
 
@@ -533,7 +549,7 @@ function Secretariat({ client }) {
       {!loading && !error && <>
         <div className="portal-table-wrap">{filtered.length ? <table>
           <caption>Solicitações no filtro</caption>
-          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Unidade</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th></tr></thead>
+          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Unidade</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th><th scope="col" className="portal-screen">Baixar ficha</th></tr></thead>
           <tbody className="portal-screen">{renderStudentRows(screenRows, true)}</tbody>
           <tbody className="portal-print-rows">{renderStudentRows(filtered, false)}</tbody>
         </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
