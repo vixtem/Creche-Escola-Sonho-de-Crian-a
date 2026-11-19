@@ -123,6 +123,26 @@ function editApplication(db, { p_application, p_expected_updated_at, ...fields }
   return result(null);
 }
 
+function saveFamilyEnrollment(db, params) {
+  const child = db.enrollment_children.find(row => row.id === params.p_child && row.guardian_id === user.id);
+  if (!child) return failure('42501');
+  const previous = db.enrollment_applications.find(row => row.child_id === child.id && row.school_year === params.p_year);
+  if ((previous?.updated_at ?? previous?.created_at ?? null) !== params.p_expected_updated_at) return failure('40001');
+  if (!previous || previous.child_name !== params.p_child_name || previous.birth_date !== params.p_birth_date) {
+    child.full_name = params.p_child_name;
+    child.birth_date = params.p_birth_date;
+  }
+  const id = previous?.id ?? submit(db, params).data?.id;
+  const record = db.enrollment_applications.find(row => row.id === id);
+  Object.assign(record, {
+    child_name: params.p_child_name, birth_date: params.p_birth_date,
+    schedule: params.p_schedule, guardian_name: params.p_guardian_name, guardian_relationship: params.p_relationship,
+    guardian_phone: params.p_phone, guardian_email: params.p_email || user.email, updated_at: now(),
+  });
+  save(db);
+  return result({ id, protocol: record.protocol, created: !previous, updated_at: record.updated_at });
+}
+
 export function createDemoClient() {
   return {
     demo: true,
@@ -130,6 +150,7 @@ export function createDemoClient() {
     from: query,
     rpc(name, params) {
       if (name === 'submit_enrollment') return { async single() { return submit(read(), params); } };
+      if (name === 'save_family_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
       if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
       return Promise.resolve(failure('42883'));

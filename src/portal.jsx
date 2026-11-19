@@ -57,7 +57,7 @@ function History({ client, item }) {
 function Family({ client, user }) {
   const [children, setChildren] = useState(null);
   const [applications, setApplications] = useState([]);
-  const [editing, setEditing] = useState(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -91,11 +91,9 @@ function Family({ client, user }) {
         setError('Informe o nome e a data de nascimento da criança.');
         return;
       }
-      const request = editing.id ? client.from('enrollment_children').update({ full_name, birth_date })
-        .eq('id', editing.id) : client.from('enrollment_children').insert({ full_name, birth_date });
-      const { error } = await request.select('id').single();
+      const { error } = await client.from('enrollment_children').insert({ full_name, birth_date }).select('id').single();
       if (error) throw error;
-      setEditing(null);
+      setCreating(false);
       setNotice('Cadastro da criança salvo.');
       refresh();
     } catch (err) {
@@ -108,30 +106,34 @@ function Family({ client, user }) {
 
   return <>
     <div className="portal-stack-head"><h2>Minhas crianças</h2>
-      <button className="button" type="button" onClick={() => { setEditing({}); setNotice(''); }}>Cadastrar criança</button>
+      <button className="button" type="button" onClick={() => { setCreating(true); setNotice(''); }}>Cadastrar criança</button>
     </div>
-    {editing && <form className="portal-card" onSubmit={save} key={editing.id || 'new'}>
-      <h3>{editing.id ? 'Editar cadastro' : 'Cadastro da criança'}</h3>
+    {creating && <form className="portal-card" onSubmit={save}>
+      <h3>Cadastro da criança</h3>
       <div className="enrollment-grid">
         <div className="enrollment-field"><label htmlFor="child-name">Nome completo</label>
-          <input id="child-name" name="name" defaultValue={editing.full_name} maxLength={120} required /></div>
+          <input id="child-name" name="name" maxLength={120} required /></div>
         <div className="enrollment-field"><label htmlFor="child-birth">Data de nascimento</label>
-          <input id="child-birth" name="birth" type="date" min="1900-01-01" max={today} defaultValue={editing.birth_date} required /></div>
+          <input id="child-birth" name="birth" type="date" min="1900-01-01" max={today} required /></div>
       </div>
       <div className="portal-actions"><button className="button" disabled={busy}>Salvar cadastro</button>
-        <button className="text-link" type="button" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button></div>
+        <button className="text-link" type="button" disabled={busy} onClick={() => setCreating(false)}>Cancelar</button></div>
     </form>}
     <p role="status">{error || notice || (!children ? 'Carregando fichas…' : '')}</p>
     {error && <button className="text-link" type="button" onClick={refresh}>Atualizar lista</button>}
-    {children?.length === 0 && !editing && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
-    {children?.map(child => <article className="portal-card" key={child.id}>
-      <h3>{child.full_name}</h3>
-      <p>Nascimento em {formatDate(child.birth_date)}</p>
-      <div className="portal-actions">
-        <a className="button" href={`./pre-matricula.html?crianca=${encodeURIComponent(child.id)}`}>Preencher pré-matrícula</a>
-        <button className="text-link" type="button" onClick={() => setEditing(child)}>Editar cadastro</button>
-      </div>
-    </article>)}
+    {children?.length === 0 && !creating && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
+    {children?.map(child => {
+      const application = applications.find(item => item.child_id === child.id);
+      return <article className="portal-card" key={child.id}>
+        <h3>{child.full_name}</h3>
+        <p>Nascimento em {formatDate(child.birth_date)}</p>
+        <div className="portal-actions">
+          <a className="button" href={`./pre-matricula.html?crianca=${encodeURIComponent(child.id)}`}>
+            {application ? 'Editar pré-matrícula' : 'Preencher pré-matrícula'}
+          </a>
+        </div>
+      </article>;
+    })}
     <div className="portal-stack-head"><h2>Minhas solicitações</h2>
       <button className="text-link" type="button" onClick={refresh}>Atualizar situação</button></div>
     {children && applications.length === 0 && <p>As pré-matrículas enviadas aparecem aqui.</p>}
@@ -139,6 +141,9 @@ function Family({ client, user }) {
       <h3>{item.child_name}</h3>
       <p>{item.school_year} · {item.schedule}</p>
       <strong className="portal-status">{states[item.status]}</strong>
+      <div className="portal-actions"><a className="text-link" href={`./pre-matricula.html?crianca=${encodeURIComponent(item.child_id)}&ano=${item.school_year}`}>
+        Editar pré-matrícula
+      </a></div>
       <History key={item.status} client={client} item={item} />
     </article>)}
   </>;
