@@ -2,33 +2,38 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
-import { sections, ageOnDate } from './enrollment-fields';
+import { sections, ageOnDate, enrollmentYear } from './enrollment-fields';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
-import { allRows, currentSchoolYear, dateInSchool, getPortalClient } from './portal-api';
+import { dateInSchool, getPortalClient } from './portal-api';
 import './styles.css';
 import './enrollment.css';
 
-const onlineFields = ['child', 'birth', 'schedule', 'guardian', 'relationship', 'phone', 'email'];
+const onlineFields = ['child', 'birth', 'schedule', 'guardian', 'relationship', 'phone', 'unit'];
+const formFields = sections.flatMap(section => section.fields).filter(field => field.type !== 'age' && !field.readOnly);
 
-function draftKey(portal, year) {
-  return `cesc-enrollment-draft-v1:${portal.user.id}:${portal.child.id}:${year}`;
+function draftKey(portal) {
+  return `cesc-enrollment-draft-v1:${portal.user.id}:${portal.child.id}:${enrollmentYear}`;
 }
 
-function readDraft(portal, year) {
+function draftRevision({ application, child }) {
+  return application?.updated_at ?? application?.created_at ?? `${child.full_name}:${child.birth_date}`;
+}
+
+function readDraft(portal) {
   try {
     const storage = portal.client.demo ? sessionStorage : localStorage;
-    return JSON.parse(storage.getItem(draftKey(portal, year))) || {};
+    return JSON.parse(storage.getItem(draftKey(portal))) || {};
   } catch {
     return {};
   }
 }
 
 function Field({ field, values, update }) {
-  const { name, label, options, details, type = 'text', limit, optional, wide, autoComplete } = field;
+  const { name, label, options, type = 'text', limit, optional, wide, autoComplete, readOnly } = field;
   const value = values[name] || '';
   const id = `enrollment-${name}`;
   const props = {
-    id, name, value, autoComplete, required: !optional, maxLength: limit,
+    id, name, value, autoComplete, required: !optional, maxLength: limit, readOnly,
     onChange: (event) => update(name, event.currentTarget.value),
   };
 
@@ -38,7 +43,8 @@ function Field({ field, values, update }) {
       {options ? (
         <select {...props}>
           <option value="" disabled>Selecione</option>
-          {options.map(option => <option key={option}>{option}</option>)}
+          {(Array.isArray(options) ? options.map(option => [option, option]) : Object.entries(options))
+            .map(([key, text]) => <option key={key} value={key}>{text}</option>)}
         </select>
       ) : type === 'age' ? (
         <output id={id} htmlFor="enrollment-birth">{values.age || 'Calculada pela data de nascimento'}</output>
@@ -48,15 +54,6 @@ function Field({ field, values, update }) {
           pattern={name === 'cep' ? '[0-9]{5}(?:-| )?[0-9]{3}' : undefined}
           inputMode={name === 'cep' ? 'numeric' : undefined}
           placeholder={name === 'cep' ? '00000-000' : undefined} />
-      )}
-      {details && value === 'Sim' && (
-        <div className="enrollment-detail">
-          <label htmlFor={`${id}-details`}>{details} <span>(obrigatório)</span></label>
-          <textarea id={`${id}-details`} name={`${name}Details`}
-            rows={2} maxLength={240} required
-            value={values[`${name}Details`] || ''}
-            onChange={event => update(`${name}Details`, event.currentTarget.value)} />
-        </div>
       )}
     </div>
   );
@@ -89,7 +86,6 @@ function Enrollment() {
   const [photo, setPhoto] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
-  const [schoolYear, setSchoolYear] = useState(currentSchoolYear);
   const [portal, setPortal] = useState(() => ({
     loading: new URLSearchParams(window.location.search).has('crianca'),
   }));
@@ -99,23 +95,23 @@ function Enrollment() {
   const [sent, setSent] = useState(null);
   const [sendError, setSendError] = useState('');
   const [reload, setReload] = useState(0);
-  const application = portal.applications?.find(item => item.school_year === schoolYear);
+  const { application } = portal;
 
-  function openYear(context, year) {
-    const item = context.applications.find(request => request.school_year === year);
-    const saved = readDraft(context, year);
-    const revision = item?.updated_at ?? item?.created_at ?? `${context.child.full_name}:${context.child.birth_date}`;
-    const restored = Object.fromEntries(Object.entries(saved.fields || {}).filter(([name]) =>
-      saved.revision === revision || !onlineFields.includes(name)));
-    setSchoolYear(year);
+  function openApplication(context) {
+    const item = context.application;
+    const saved = readDraft(context);
+    const revisionMatches = saved.revision === draftRevision(context);
+    const restored = Object.fromEntries(formFields
+      .filter(({ name }) => typeof saved.fields?.[name] === 'string' && (revisionMatches || !onlineFields.includes(name)))
+      .map(({ name }) => [name, saved.fields[name]]));
     setDraft(restored);
     setPhoto(saved.photo || null);
     setValues({
       child: item?.child_name ?? context.child.full_name,
       birth: item?.birth_date ?? context.child.birth_date,
-      email: item?.guardian_email ?? context.user.email ?? '',
+      email: context.user.email,
       schedule: item?.schedule ?? '', guardian: item?.guardian_name ?? '',
-      relationship: item?.guardian_relationship ?? '', phone: item?.guardian_phone ?? '',
+      relationship: item?.guardian_relationship ?? '', phone: item?.guardian_phone ?? '', unit: item?.unit ?? '',
       ...restored,
     });
     setSent(null);
@@ -134,20 +130,17 @@ function Enrollment() {
       if (!client) throw new Error();
       const { data: { session }, error: sessionError } = client.demo
         ? { data: { session: client.demoSession } } : await client.auth.getSession();
-      if (sessionError || !session) throw new Error();
-      const [{ data: child, error }, applications] = await Promise.all([
+      if (sessionError || !session?.user.email) throw new Error();
+      const [{ data: child, error }, { data: application, error: applicationError }] = await Promise.all([
         client.from('enrollment_children').select('id, full_name, birth_date').eq('id', requestedChild).maybeSingle(),
-        allRows(() => client.from('enrollment_applications')
-          .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, created_at, updated_at')
-          .eq('child_id', requestedChild).eq('guardian_id', session.user.id).order('school_year', { ascending: false }).order('id')),
+        client.from('enrollment_applications')
+          .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, schedule, unit, created_at, updated_at')
+          .eq('child_id', requestedChild).eq('guardian_id', session.user.id).eq('school_year', enrollmentYear).maybeSingle(),
       ]);
-      if (error || !child) throw new Error();
+      if (error || applicationError || !child) throw new Error();
       if (!active) return;
-      const context = { client, child, applications, user: session.user, notice: '' };
-      const currentYear = currentSchoolYear();
-      const requestedYear = Number(params.get('ano'));
-      const knownYears = [currentYear, currentYear + 1, ...applications.map(item => item.school_year)];
-      openYear(context, knownYears.includes(requestedYear) ? requestedYear : applications[0]?.school_year ?? currentYear);
+      const context = { client, child, application, user: session.user, notice: '' };
+      openApplication(context);
       setPortal(context);
     }).catch(() => {
       if (active) setPortal({ client: null, child: null, notice: 'Cadastro indisponível nesta sessão. Abra a ficha pelo Portal da família para enviar à escola.' });
@@ -158,16 +151,16 @@ function Enrollment() {
   useEffect(() => {
     if (!portal.child) return;
     try {
-      const key = draftKey(portal, schoolYear);
+      const key = draftKey(portal);
       const storage = portal.client.demo ? sessionStorage : localStorage;
-      const revision = application?.updated_at ?? application?.created_at ?? `${portal.child.full_name}:${portal.child.birth_date}`;
+      const revision = draftRevision(portal);
       if (photo || Object.keys(draft).length) storage.setItem(key, JSON.stringify({ revision, fields: draft, photo }));
       else storage.removeItem(key);
       setDraftError('');
     } catch {
       setDraftError('O navegador não conseguiu guardar o rascunho neste dispositivo. Baixe o PDF para guardar uma cópia.');
     }
-  }, [portal, schoolYear, application, draft, photo]);
+  }, [portal, draft, photo]);
 
   async function changePhoto(input) {
     const file = input.files[0];
@@ -227,10 +220,11 @@ function Enrollment() {
   async function send(event, profileOnly = false) {
     const form = event.currentTarget.form;
     if (sending) return;
-    for (const name of profileOnly ? ['child', 'birth'] : onlineFields) {
+    const fields = profileOnly ? formFields.filter(({ name }) => name === 'child' || name === 'birth') : formFields;
+    for (const { name, optional } of fields) {
       const field = form.elements.namedItem(name);
       if (!field.reportValidity()) return;
-      if (name !== 'email' && !field.value.trim()) {
+      if (!optional && !field.value.trim()) {
         field.setCustomValidity('Preencha este campo.');
         field.reportValidity();
         field.setCustomValidity('');
@@ -257,20 +251,20 @@ function Enrollment() {
         setSent({ profileOnly: true });
         return;
       }
-      const { data, error } = await portal.client.rpc('save_family_enrollment', {
-        p_child: portal.child.id, p_year: schoolYear, p_schedule: values.schedule,
+      const { data, error } = await portal.client.rpc('save_current_enrollment', {
+        p_child: portal.child.id, p_schedule: values.schedule, p_unit: values.unit,
         p_expected_updated_at: application?.updated_at ?? application?.created_at ?? null,
         p_child_name: values.child.trim(), p_birth_date: values.birth,
         p_guardian_name: values.guardian.trim(), p_relationship: values.relationship.trim(),
-        p_phone: values.phone.trim(), p_email: values.email.trim(),
+        p_phone: values.phone.trim(),
       }).single();
       if (error || !data) throw error;
-      const saved = { ...application, ...data, school_year: schoolYear, child_name: values.child.trim(), birth_date: values.birth,
-        schedule: values.schedule, guardian_name: values.guardian.trim(), guardian_relationship: values.relationship.trim(),
-        guardian_phone: values.phone.trim(), guardian_email: values.email.trim() || portal.user.email };
+      const saved = { ...application, ...data, child_name: values.child.trim(), birth_date: values.birth,
+        schedule: values.schedule, unit: values.unit, guardian_name: values.guardian.trim(),
+        guardian_relationship: values.relationship.trim(), guardian_phone: values.phone.trim() };
       const updateProfile = !application || application.child_name !== saved.child_name || application.birth_date !== saved.birth_date;
       setPortal(current => ({ ...current, child: updateProfile ? { ...current.child, full_name: saved.child_name, birth_date: saved.birth_date } : current.child,
-        applications: [...current.applications.filter(item => item.school_year !== schoolYear), saved] }));
+        application: saved }));
       setDraft(current => Object.fromEntries(Object.entries(current).filter(([name]) => !onlineFields.includes(name))));
       setSent(data);
     } catch (error) {
@@ -288,22 +282,22 @@ function Enrollment() {
         <div className="enrollment-intro">
           <img className="enrollment-logo" src={`${import.meta.env.BASE_URL}images/marca-cesc.png`} width="600" height="365" alt="" />
           <p className="enrollment-school">{school.fullName}</p>
-          <h1>Ficha de pré-matrícula</h1>
+          <h1>Ficha de pré-matrícula {enrollmentYear}</h1>
           <p>Educação Infantil · {school.ageRange}</p>
         </div>
         <p className="enrollment-privacy"><ShieldCheck aria-hidden="true" size={21} />
           <span>{portal.client?.demo
             ? 'Modo de teste. Use apenas dados fictícios. A pré-matrícula de teste fica nesta aba e não é enviada à escola.'
             : portal.child
-            ? 'Os dados enviados à secretaria ficam no portal. Os demais campos e a foto ficam no rascunho deste navegador e podem ser incluídos no PDF.'
-            : 'Preencha a ficha e baixe o PDF de uma página para apresentar à secretaria. Neste modo, os dados ficam no dispositivo.'}</span>
+            ? 'Sexo, endereço e foto ficam no rascunho deste navegador e podem ser incluídos no PDF.'
+            : 'Entre no Portal da Família e abra a ficha pelo cadastro da criança.'}</span>
         </p>
         <a className="button enrollment-portal-link" href="./portal.html">
           <ArrowLeft size={19} aria-hidden="true" /> Voltar ao Portal da Família
         </a>
         {portal.notice && <p role="status">{portal.notice}</p>}
         {draftError && <p role="status">{draftError}</p>}
-        {!portal.loading && <form onSubmit={download} autoComplete="off">
+        {!portal.loading && portal.child && <form onSubmit={download} autoComplete="off">
           {sections.map(({ title, fields }) => (
             <fieldset key={title} className="enrollment-section" disabled={sending}>
               <legend>{title}</legend>
@@ -314,22 +308,9 @@ function Enrollment() {
               </div>
             </fieldset>
           ))}
-          {portal.child && <fieldset className="enrollment-section enrollment-submit">
+          <fieldset className="enrollment-section enrollment-submit">
             <legend>{application ? 'Atualizar pré-matrícula' : 'Enviar à secretaria'}</legend>
-            <div className="enrollment-field">
-              <label htmlFor="enrollment-year">Ano letivo</label>
-              <select id="enrollment-year" value={schoolYear} disabled={sending || photoLoading}
-                onChange={event => {
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('ano', event.target.value);
-                  window.history.replaceState(null, '', url);
-                  openYear(portal, Number(event.target.value));
-                }}>
-                {[...new Set([currentSchoolYear(), currentSchoolYear() + 1, ...portal.applications.map(item => item.school_year)])]
-                  .sort((a, b) => a - b).map(year => <option key={year} value={year}>{year}</option>)}
-              </select>
-            </div>
-            <p>A secretaria recebe o nome e a data de nascimento da criança, o turno e os dados do responsável.</p>
+            <p>A secretaria recebe nome e nascimento da criança, modalidade, unidade e dados do responsável.</p>
             <button className="button" type="button" disabled={sending} onClick={send}>
               {sending ? 'Salvando…' : application ? 'Salvar alterações' : 'Enviar pré-matrícula'}
             </button>
@@ -345,7 +326,7 @@ function Enrollment() {
                 <a className="text-link" href="./portal.html">Acompanhar solicitação</a>
               </>}
             </div>}
-          </fieldset>}
+          </fieldset>
           <div className="enrollment-actions">
             <button className="button" type="submit" disabled={busy || photoLoading || sending}>
               <Download aria-hidden="true" size={19} /> {busy ? 'Gerando PDF…' : 'Baixar ficha em PDF'}

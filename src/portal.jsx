@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LogOut, Printer } from 'lucide-react';
-import { ageOnDate, sections } from './enrollment-fields';
-import { allRows, currentSchoolYear, dateInSchool, formatDate, getPortalClient, states, transitions } from './portal-api';
+import { ageOnDate, enrollmentYear, schoolUnits, studyModes } from './enrollment-fields';
+import { allRows, dateInSchool, formatDate, getPortalClient, states, transitions } from './portal-api';
 import { school } from './school';
 import { PortalLogin } from './portal-login';
 import './styles.css';
@@ -11,7 +11,7 @@ import './portal.css';
 
 const staffMode = new URLSearchParams(window.location.search).get('area') === 'secretaria';
 const demoAccessKey = `cesc-portal-demo-access-${staffMode ? 'staff' : 'family'}`;
-const schedules = sections[1].fields[0].options;
+const schedules = Object.keys(studyModes);
 const secretariatTabs = [
   { id: 'reports', label: 'Informações e relatórios' },
   { id: 'students', label: 'Alunos' },
@@ -21,7 +21,6 @@ const today = dateInSchool();
 const sheetFields = [
   { name: 'child_name', label: 'Nome completo da criança', input: { maxLength: 120 } },
   { name: 'birth_date', label: 'Data de nascimento', input: { type: 'date', min: '1900-01-01', max: today } },
-  { name: 'school_year', label: 'Ano letivo', input: { type: 'number', min: 2020, max: 2100 } },
   { name: 'schedule', label: 'Turno', options: schedules },
   { name: 'guardian_name', label: 'Nome do responsável', input: { maxLength: 120 } },
   { name: 'guardian_relationship', label: 'Parentesco ou vínculo', input: { maxLength: 80 } },
@@ -66,7 +65,7 @@ function Family({ client, user }) {
     const [profiles, requests] = await Promise.all([
       allRows(() => client.from('enrollment_children').select('id, full_name, birth_date').order('id')),
       allRows(() => client.from('enrollment_applications')
-        .select('id, child_id, protocol, child_name, schedule, school_year, status').eq('guardian_id', user.id).order('id')),
+        .select('id, child_id, protocol, child_name, schedule, unit, school_year, status').eq('guardian_id', user.id).order('id')),
     ]);
     setChildren(profiles.sort((a, b) => a.full_name.localeCompare(b.full_name, 'pt-BR')));
     setApplications(requests.sort((a, b) => b.school_year - a.school_year));
@@ -123,7 +122,7 @@ function Family({ client, user }) {
     {error && <button className="text-link" type="button" onClick={refresh}>Atualizar lista</button>}
     {children?.length === 0 && !creating && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
     {children?.map(child => {
-      const application = applications.find(item => item.child_id === child.id);
+      const application = applications.find(item => item.child_id === child.id && item.school_year === enrollmentYear);
       return <article className="portal-card" key={child.id}>
         <h3>{child.full_name}</h3>
         <p>Nascimento em {formatDate(child.birth_date)}</p>
@@ -139,11 +138,11 @@ function Family({ client, user }) {
     {children && applications.length === 0 && <p>As pré-matrículas enviadas aparecem aqui.</p>}
     {applications.map(item => <article className="portal-card" key={item.id}>
       <h3>{item.child_name}</h3>
-      <p>{item.school_year} · {item.schedule}</p>
+      <p>{item.school_year} · {studyModes[item.schedule]}{item.unit ? ` · ${schoolUnits[item.unit]}` : ''}</p>
       <strong className="portal-status">{states[item.status]}</strong>
-      <div className="portal-actions"><a className="text-link" href={`./pre-matricula.html?crianca=${encodeURIComponent(item.child_id)}&ano=${item.school_year}`}>
+      {item.school_year === enrollmentYear && <div className="portal-actions"><a className="text-link" href={`./pre-matricula.html?crianca=${encodeURIComponent(item.child_id)}`}>
         Editar pré-matrícula
-      </a></div>
+      </a></div>}
       <History key={item.status} client={client} item={item} />
     </article>)}
   </>;
@@ -179,7 +178,8 @@ function Decision({ client, item, onSaved }) {
 
   return <div className="portal-decision">
     <h3>{item.child_name}</h3>
-    <p><strong>Nascimento:</strong> {formatDate(item.birth_date)} · <strong>Ano letivo:</strong> {item.school_year} · <strong>Turno:</strong> {item.schedule}</p>
+    <p><strong>Nascimento:</strong> {formatDate(item.birth_date)} · <strong>Ano letivo:</strong> {item.school_year} · <strong>Turno:</strong> {studyModes[item.schedule]}</p>
+    <p><strong>Unidade:</strong> {schoolUnits[item.unit] || 'Não informada'}</p>
     <p><strong>Responsável:</strong> {item.guardian_name} ({item.guardian_relationship}) · {item.guardian_phone} · {item.guardian_email}</p>
     <p><strong>Protocolo:</strong> <code>{item.protocol}</code></p>
     <History client={client} item={item} />
@@ -223,18 +223,17 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
     setBusy(true);
     setError(null);
     try {
-      const schoolYear = Number(values.school_year);
       const { error } = await client.rpc('edit_enrollment_application', {
         p_application: item.id,
         p_expected_updated_at: item.updated_at || item.created_at,
-        ...Object.fromEntries(Object.entries({ ...values, school_year: schoolYear }).map(([key, value]) => [`p_${key}`, value])),
+        p_school_year: item.school_year,
+        ...Object.fromEntries(Object.entries(values).map(([key, value]) => [`p_${key}`, value])),
       });
       if (error) throw error;
-      onSaved(schoolYear);
+      onSaved();
     } catch (err) {
       const messages = {
         '40001': 'A ficha mudou desde que foi aberta. Recarregue a ficha para conferir a versão atual.',
-        '23505': 'Já existe uma ficha desta criança no ano letivo informado.',
         '22023': 'Confira os dados informados na ficha.',
         '42501': 'A conta atual não tem permissão para editar esta ficha.',
         P0002: 'Esta ficha não está mais disponível.',
@@ -251,7 +250,7 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
       {sheetFields.map(({ name, label, input, options }) => <div className="enrollment-field" key={name}>
         <label htmlFor={`sheet-${name}`}>{label}</label>
         {options ? <select id={`sheet-${name}`} name={name} defaultValue={item[name]} required>
-          {options.map(option => <option key={option}>{option}</option>)}
+          {options.map(option => <option key={option} value={option}>{studyModes[option]}</option>)}
         </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required />}
       </div>)}
     </fieldset>
@@ -268,7 +267,7 @@ function Secretariat({ client }) {
   const [tab, setTab] = useState(0);
   const [records, setRecords] = useState([]);
   const [years, setYears] = useState([]);
-  const [year, setYear] = useState(currentSchoolYear);
+  const [year, setYear] = useState(enrollmentYear);
   const [status, setStatus] = useState('');
   const [schedule, setSchedule] = useState('');
   const [age, setAge] = useState('');
@@ -288,13 +287,13 @@ function Secretariat({ client }) {
     setError('');
     Promise.all([
       allRows(() => client.from('enrollment_applications')
-        .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, status, created_at, updated_at')
+        .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, unit, status, created_at, updated_at')
         .eq('school_year', year).order('created_at').order('id')),
       allRows(() => client.from('enrollment_applications').select('school_year').order('school_year').order('id')),
     ]).then(([items, historic]) => {
       if (!active) return;
       setRecords(items);
-      setYears([...new Set([currentSchoolYear(), currentSchoolYear() + 1, ...historic.map(item => item.school_year)])].sort((a,b) => b-a));
+      setYears([...new Set([enrollmentYear, ...historic.map(item => item.school_year)])].sort((a,b) => b-a));
     }).catch(() => { if (active) setError('Não foi possível carregar as solicitações. Atualize para tentar novamente.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -326,9 +325,9 @@ function Secretariat({ client }) {
     setRefresh(value => value + 1);
   }
 
-  function savedSheet(id, schoolYear) {
+  function savedSheet(id) {
     setSheet(current => current?.id === id && current.mode === 'edit' ? null : current);
-    setNotice(schoolYear === year ? 'Alterações salvas.' : `Alterações salvas. A ficha passou para o ano letivo ${schoolYear}.`);
+    setNotice('Alterações salvas.');
     reload();
   }
 
@@ -337,7 +336,7 @@ function Secretariat({ client }) {
       <td>{showDecision ? <button type="button" className="portal-student-name"
         aria-expanded={sheet?.id === item.id && sheet.mode === 'view'}
         onClick={() => openSheet(item, 'view')}>{item.child_name}</button> : item.child_name}</td>
-      <td>{item.age ?? '—'}</td><td>{item.schedule}</td><td>{states[item.status]}</td>
+      <td>{item.age ?? '—'}</td><td>{studyModes[item.schedule]}</td><td>{states[item.status]}</td>
       {showDecision && <td><button type="button" className="text-link"
         aria-expanded={sheet?.id === item.id && sheet.mode === 'edit'} aria-label={`Editar ficha de ${item.child_name}`}
         onClick={() => openSheet(item, 'edit')}>Editar</button></td>}
@@ -378,7 +377,7 @@ function Secretariat({ client }) {
           </select></div>
         <div className="enrollment-field"><label htmlFor="filter-schedule">Turno</label>
           <select id="filter-schedule" value={schedule} onChange={e => setSchedule(e.target.value)}>
-            <option value="">Todos</option>{schedules.map(value => <option key={value}>{value}</option>)}
+            <option value="">Todos</option>{schedules.map(value => <option key={value} value={value}>{studyModes[value]}</option>)}
           </select></div>
         <div className="enrollment-field"><label htmlFor="filter-age">Idade</label>
           <select id="filter-age" value={age} onChange={e => setAge(e.target.value)}>
@@ -394,7 +393,7 @@ function Secretariat({ client }) {
       aria-labelledby="staff-tab-reports" data-active={tab === 0} tabIndex={0}>
       <div className="portal-report-title">
         <h2>{school.name} · Relatório de matrículas</h2>
-        <p>Ano letivo {year} · {states[status] || 'Todas as situações'} · {schedule || 'Todos os turnos'} · {age === '' ? 'Todas as idades' : `${age} anos`}</p>
+        <p>Ano letivo {year} · {states[status] || 'Todas as situações'} · {studyModes[schedule] || 'Todos os turnos'} · {age === '' ? 'Todas as idades' : `${age} anos`}</p>
         <p>Idades calculadas em {formatDate(referenceDate)}.</p>
       </div>
       <div className="portal-actions portal-screen">
@@ -409,7 +408,7 @@ function Secretariat({ client }) {
         </div>
         <div className="portal-breakdown">
           <section><h3>Por situação</h3><dl>{Object.entries(states).map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{byStatus[key]}</dd></div>)}</dl></section>
-          <section><h3>Por turno</h3><dl>{schedules.map(value => <div key={value}><dt>{value}</dt><dd>{bySchedule[value]}</dd></div>)}</dl></section>
+          <section><h3>Por turno</h3><dl>{schedules.map(value => <div key={value}><dt>{studyModes[value]}</dt><dd>{bySchedule[value]}</dd></div>)}</dl></section>
           <section><h3>Por idade</h3><dl>{ages.map(value => <div key={value}><dt>{value} anos</dt><dd>{byAge[value]}</dd></div>)}</dl></section>
         </div>
       </>}
@@ -428,7 +427,7 @@ function Secretariat({ client }) {
         {showing && <aside className="portal-card portal-screen" ref={sheetRef} tabIndex={-1} aria-label="Ficha do aluno">
           {sheet.mode === 'edit'
             ? <EditApplication key={`${showing.id}-${showing.updated_at}`} client={client} item={showing}
-              onCancel={() => setSheet(null)} onSaved={schoolYear => savedSheet(showing.id, schoolYear)} onReload={reload} />
+              onCancel={() => setSheet(null)} onSaved={() => savedSheet(showing.id)} onReload={reload} />
             : <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={reload} />}
         </aside>}
       </>}

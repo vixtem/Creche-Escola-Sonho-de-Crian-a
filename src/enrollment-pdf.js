@@ -2,7 +2,7 @@ import {
   PDFDocument, concatTransformationMatrix, popGraphicsState, pushGraphicsState, rgb,
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { sections } from './enrollment-fields.js';
+import { enrollmentYear, schoolUnits, sections, studyModes } from './enrollment-fields.js';
 import { school } from './school.js';
 
 const width = 595.28;
@@ -25,9 +25,7 @@ const colors = {
   child: { accent: rgb(.61, .15, .28), tint: rgb(1, .93, .95) },
   schedule: { accent: rgb(.02, .38, .62), tint: rgb(.91, .96, 1) },
   guardian: { accent: rgb(.53, .32, .05), tint: rgb(1, .96, .85) },
-  allergy: { accent: rgb(.03, .42, .37), tint: rgb(.88, .97, .95) },
-  food: { accent: rgb(.29, .42, .08), tint: rgb(.94, .97, .87) },
-  priorSchool: { accent: rgb(.36, .24, .57), tint: rgb(.95, .92, .99) },
+  unit: { accent: rgb(.03, .42, .37), tint: rgb(.88, .97, .95) },
 };
 
 function wrap(text, font, size, width, firstWidth = width) {
@@ -58,7 +56,7 @@ function wrap(text, font, size, width, firstWidth = width) {
 
 export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample = false } = {}) {
   const pdf = await PDFDocument.create();
-  pdf.setTitle('Ficha de pré-matrícula | Sonho de Criança');
+  pdf.setTitle(`Ficha de pré-matrícula ${enrollmentYear} | Sonho de Criança`);
   pdf.setAuthor(school.fullName);
   pdf.setLanguage('pt-BR');
   pdf.registerFontkit(fontkit);
@@ -107,7 +105,8 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     roundedBox(margin, cursor, titleWidth, headerHeight, radius, { color: navy }, { topRight: 0, bottomRight: 0 });
     horizontalRule(margin + radius, headerY + 2, titleWidth - radius, rgb(1, .87, 0), 2.5);
     roundedBox(margin, cursor, boxWidth, headerHeight, radius, { borderColor: navy, borderWidth: .8 });
-    draw('Ficha de pré-matrícula', margin + 12, headerY + 21, 17.5, bold, white);
+    draw('Ficha de pré-matrícula', margin + 12, headerY + 29, 16, bold, white);
+    draw(String(enrollmentYear), margin + 12, headerY + 12, 13, bold, white);
     const brandX = margin + titleWidth + 11;
     if (logo) {
       const dimensions = logo.scaleToFit(68, 42);
@@ -144,13 +143,6 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
       ? character : '\uFFFD').join('');
   }
 
-  function statement(name) {
-    const status = answer(name);
-    if (!status) return 'Não informado';
-    const detail = status === 'Sim' ? answer(`${name}Details`) : '';
-    return detail ? `${status} · ${detail}` : status;
-  }
-
   function buildLayout(size, rowGap, sectionGap, bodyPadding, widthScale = 1) {
     const lineHeight = size + 1.4;
     const labelSize = Math.max(9.5, size - .5);
@@ -171,15 +163,6 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
       return { cells, height: height + rowGap };
     }
 
-    function notes(entries) {
-      return entries.map(([label, value]) => {
-        const heading = `${label}: `;
-        const prefixWidth = bold.widthOfTextAtSize(heading, size);
-        const lines = wrap(value, regular, size, sectionWidth / widthScale, (sectionWidth - prefixWidth) / widthScale);
-        return { heading, prefixWidth, lines, height: lines.length * lineHeight + rowGap };
-      });
-    }
-
     const birth = answer('birth').split('-').reverse().join('/');
     const blocks = [
       { key: 'child', rows: [
@@ -188,25 +171,14 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
         row([['Endereço completo', answer('address')]], personalWidth),
         row([['Bairro', answer('district'), .72], ['CEP', answer('cep'), .28]], personalWidth),
       ] },
-      { key: 'schedule', notes: notes([['Modalidade desejada', answer('schedule') || 'Não informado']]) },
+      { key: 'schedule', rows: [row([['Modalidade', studyModes[answers.schedule]]])] },
       { key: 'guardian', rows: [
         row([['Nome completo', answer('guardian'), .63], ['Vínculo com a criança', answer('relationship'), .37]]),
-        row([['Telefone com DDD', answer('phone'), .27], ['E-mail', answer('email'), .73]]),
+        row([['Telefone com DDD', answer('phone'), .27], ['E-mail da conta', answer('email'), .73]]),
       ] },
-      { key: 'allergy', notes: notes([
-        ['Alergias', statement('allergy')],
-        ['Doença crônica', statement('chronic')],
-        ['Uso contínuo de medicamentos', statement('medication')],
-        ['Deficiência ou necessidade educacional específica', statement('disability')],
-      ]) },
-      { key: 'food', notes: notes([['Restrição alimentar', statement('food')]]) },
-      { key: 'priorSchool', rows: [
-        row([['Frequenta ou já frequentou outra escola?', statement('priorSchool')], ['Já está desfraldada?', statement('toilet')]]),
-        row([['Usa chupeta?', statement('pacifier')], ['Usa mamadeira?', statement('bottle')]]),
-      ] },
+      { key: 'unit', rows: [row([['Unidade', schoolUnits[answers.unit]]])] },
     ].map(block => {
-      const items = block.rows ?? block.notes;
-      const rowsHeight = items.reduce((total, item) => total + item.height, 0) - rowGap;
+      const rowsHeight = block.rows.reduce((total, item) => total + item.height, 0) - rowGap;
       const minHeight = block.key === 'child' ? photoHeight : 0;
       const height = headingHeight + 2 * bodyPadding + Math.max(minHeight, rowsHeight);
       return { ...block, height };
@@ -228,7 +200,7 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     let top = cursor - headingHeight - bodyPadding;
     if (block.key === 'child') drawPhoto(top, palette.accent);
 
-    for (const row of block.rows ?? []) {
+    for (const row of block.rows) {
       for (const { labelLines, lines, x, cellWidth } of row.cells) {
         const labelStep = labelSize + 1;
         labelLines.forEach((label, index) => draw(label, x, top - labelSize - index * labelStep, labelSize, bold, muted));
@@ -239,15 +211,6 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
       top -= row.height;
     }
 
-    for (const item of block.notes ?? []) {
-      const x = margin + inset;
-      const y = top - size;
-      draw(item.heading, x, y, size, bold, muted);
-      item.lines.forEach((line, index) => {
-        drawAnswer(line, index === 0 ? x + item.prefixWidth : x, y - index * lineHeight, size, widthScale);
-      });
-      top -= item.height;
-    }
     cursor -= block.height + sectionGap;
   }
 

@@ -1,4 +1,5 @@
 import { currentSchoolYear, transitions } from './portal-api.js';
+import { enrollmentYear, schoolUnits } from './enrollment-fields.js';
 
 const key = 'cesc-portal-demo-v1';
 const user = { id: 'familia-demonstracao', email: 'familia@example.test' };
@@ -12,7 +13,7 @@ function seed() {
     id: 'demo-solicitacao', child_id: child.id, guardian_id: user.id, protocol: 'TESTE-001',
     child_name: child.full_name, birth_date: child.birth_date, guardian_name: 'Responsável de exemplo',
     guardian_relationship: 'Mãe', guardian_phone: '98000000000', guardian_email: user.email,
-    school_year: currentSchoolYear(), schedule: 'Tempo Integral', status: 'received', created_at: now(),
+    school_year: enrollmentYear, schedule: 'Tempo Integral', unit: 'jardim-eldorado', status: 'received', created_at: now(),
   };
   return {
     enrollment_children: [child],
@@ -124,20 +125,21 @@ function editApplication(db, { p_application, p_expected_updated_at, ...fields }
 }
 
 function saveFamilyEnrollment(db, params) {
+  if (!Object.hasOwn(schoolUnits, params.p_unit)) return failure('22023');
   const child = db.enrollment_children.find(row => row.id === params.p_child && row.guardian_id === user.id);
   if (!child) return failure('42501');
-  const previous = db.enrollment_applications.find(row => row.child_id === child.id && row.school_year === params.p_year);
+  const previous = db.enrollment_applications.find(row => row.child_id === child.id && row.school_year === enrollmentYear);
   if ((previous?.updated_at ?? previous?.created_at ?? null) !== params.p_expected_updated_at) return failure('40001');
   if (!previous || previous.child_name !== params.p_child_name || previous.birth_date !== params.p_birth_date) {
     child.full_name = params.p_child_name;
     child.birth_date = params.p_birth_date;
   }
-  const id = previous?.id ?? submit(db, params).data?.id;
+  const id = previous?.id ?? submit(db, { ...params, p_year: enrollmentYear }).data.id;
   const record = db.enrollment_applications.find(row => row.id === id);
   Object.assign(record, {
     child_name: params.p_child_name, birth_date: params.p_birth_date,
     schedule: params.p_schedule, guardian_name: params.p_guardian_name, guardian_relationship: params.p_relationship,
-    guardian_phone: params.p_phone, guardian_email: params.p_email || user.email, updated_at: now(),
+    guardian_phone: params.p_phone, guardian_email: user.email, unit: params.p_unit, updated_at: now(),
   });
   save(db);
   return result({ id, protocol: record.protocol, created: !previous, updated_at: record.updated_at });
@@ -149,8 +151,7 @@ export function createDemoClient() {
     demoSession: { user },
     from: query,
     rpc(name, params) {
-      if (name === 'submit_enrollment') return { async single() { return submit(read(), params); } };
-      if (name === 'save_family_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
+      if (name === 'save_current_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
       if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
       return Promise.resolve(failure('42883'));

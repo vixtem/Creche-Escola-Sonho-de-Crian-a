@@ -1,4 +1,15 @@
-const yesNo = ['Sim', 'Não'];
+export const enrollmentYear = 2027;
+
+export const studyModes = {
+  'Tempo Parcial (Matutino)': 'Manhã',
+  'Tempo Parcial (Vespertino)': 'Tarde',
+  'Tempo Integral': 'Integral',
+};
+
+export const schoolUnits = {
+  'jardim-eldorado': 'Jardim Eldorado (Chácara Brasil)',
+  'parque-vitoria': 'Parque Vitória (Turu)',
+};
 
 export const sections = [
   {
@@ -14,9 +25,9 @@ export const sections = [
     ],
   },
   {
-    title: 'Modalidade de atendimento',
+    title: 'Modalidade de estudo',
     fields: [
-      { name: 'schedule', label: 'Modalidade desejada', options: ['Tempo Parcial (Matutino)', 'Tempo Parcial (Vespertino)', 'Tempo Integral'], wide: true },
+      { name: 'schedule', label: 'Modalidade de estudo', options: studyModes, wide: true },
     ],
   },
   {
@@ -25,31 +36,13 @@ export const sections = [
       { name: 'guardian', label: 'Nome completo do responsável', limit: 120, wide: true, autoComplete: 'section-responsavel name' },
       { name: 'relationship', label: 'Parentesco ou vínculo com a criança', limit: 80 },
       { name: 'phone', label: 'Telefone com DDD', type: 'tel', limit: 24, autoComplete: 'section-responsavel tel' },
-      { name: 'email', label: 'E-mail', type: 'email', limit: 120, optional: true, wide: true, autoComplete: 'section-responsavel email' },
+      { name: 'email', label: 'E-mail da conta', type: 'email', readOnly: true, wide: true },
     ],
   },
   {
-    title: 'Informações de saúde',
+    title: 'Unidade da escola',
     fields: [
-      { name: 'allergy', label: 'A criança possui alguma alergia?', options: yesNo, details: 'Qual alergia?' },
-      { name: 'chronic', label: 'Possui alguma doença crônica?', options: yesNo, details: 'Qual doença crônica?' },
-      { name: 'medication', label: 'Faz uso contínuo de medicamentos?', options: yesNo, details: 'Qual medicamento?' },
-      { name: 'disability', label: 'Possui deficiência ou necessidade educacional específica?', options: yesNo, details: 'Qual deficiência ou necessidade?' },
-    ],
-  },
-  {
-    title: 'Alimentação',
-    fields: [
-      { name: 'food', label: 'Possui restrição alimentar?', options: yesNo, details: 'Quais alimentos não pode consumir?', wide: true },
-    ],
-  },
-  {
-    title: 'Desenvolvimento',
-    fields: [
-      { name: 'priorSchool', label: 'Já frequenta ou frequentou outra escola?', options: yesNo },
-      { name: 'toilet', label: 'Está desfraldada?', options: ['Sim', 'Não', 'Em processo'] },
-      { name: 'pacifier', label: 'Faz uso de chupeta?', options: yesNo },
-      { name: 'bottle', label: 'Usa mamadeira?', options: yesNo },
+      { name: 'unit', label: 'Escolha a unidade', options: schoolUnits, wide: true },
     ],
   },
 ];
