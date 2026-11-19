@@ -12,11 +12,11 @@ const onlineFields = ['child', 'birth', 'schedule', 'guardian', 'relationship', 
 const formFields = sections.flatMap(section => section.fields).filter(field => field.type !== 'age' && !field.readOnly);
 
 function draftKey(portal) {
-  return `cesc-enrollment-draft-v1:${portal.user.id}:${portal.child.id}:${enrollmentYear}`;
+  return `cesc-enrollment-draft-v1:${portal.user.id}:${portal.child?.id ?? 'new'}:${enrollmentYear}`;
 }
 
 function draftRevision({ application, child }) {
-  return application?.updated_at ?? application?.created_at ?? `${child.full_name}:${child.birth_date}`;
+  return application?.updated_at ?? application?.created_at ?? (child ? `${child.full_name}:${child.birth_date}` : 'new');
 }
 
 function readDraft(portal) {
@@ -26,6 +26,13 @@ function readDraft(portal) {
   } catch {
     return {};
   }
+}
+
+function writeDraft(portal, fields, photo) {
+  const storage = portal.client.demo ? sessionStorage : localStorage;
+  const key = draftKey(portal);
+  if (photo || Object.keys(fields).length) storage.setItem(key, JSON.stringify({ revision: draftRevision(portal), fields, photo }));
+  else storage.removeItem(key);
 }
 
 function Field({ field, values, update }) {
@@ -86,9 +93,10 @@ function Enrollment() {
   const [photo, setPhoto] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
-  const [portal, setPortal] = useState(() => ({
-    loading: new URLSearchParams(window.location.search).has('crianca'),
-  }));
+  const [portal, setPortal] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return { loading: params.has('crianca') || params.get('nova') === '1' };
+  });
   const [draft, setDraft] = useState({});
   const [draftError, setDraftError] = useState('');
   const [sending, setSending] = useState(false);
@@ -107,8 +115,8 @@ function Enrollment() {
     setDraft(restored);
     setPhoto(saved.photo || null);
     setValues({
-      child: item?.child_name ?? context.child.full_name,
-      birth: item?.birth_date ?? context.child.birth_date,
+      child: item?.child_name ?? context.child?.full_name ?? '',
+      birth: item?.birth_date ?? context.child?.birth_date ?? '',
       email: context.user.email,
       schedule: item?.schedule ?? '', guardian: item?.guardian_name ?? '',
       relationship: item?.guardian_relationship ?? '', phone: item?.guardian_phone ?? '', unit: item?.unit ?? '',
@@ -123,7 +131,8 @@ function Enrollment() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedChild = params.get('crianca');
-    if (!requestedChild) return;
+    const newApplication = !requestedChild && params.get('nova') === '1';
+    if (!requestedChild && !newApplication) return;
     let active = true;
     setPortal({ loading: true, notice: 'Carregando cadastro da criança…' });
     getPortalClient().then(async client => {
@@ -131,6 +140,13 @@ function Enrollment() {
       const { data: { session }, error: sessionError } = client.demo
         ? { data: { session: client.demoSession } } : await client.auth.getSession();
       if (sessionError || !session?.user.email) throw new Error();
+      if (newApplication) {
+        if (!active) return;
+        const context = { client, user: session.user };
+        openApplication(context);
+        setPortal(context);
+        return;
+      }
       const [{ data: child, error }, { data: application, error: applicationError }] = await Promise.all([
         client.from('enrollment_children').select('id, full_name, birth_date').eq('id', requestedChild).maybeSingle(),
         client.from('enrollment_applications')
@@ -149,13 +165,9 @@ function Enrollment() {
   }, [reload]);
 
   useEffect(() => {
-    if (!portal.child) return;
+    if (!portal.user) return;
     try {
-      const key = draftKey(portal);
-      const storage = portal.client.demo ? sessionStorage : localStorage;
-      const revision = draftRevision(portal);
-      if (photo || Object.keys(draft).length) storage.setItem(key, JSON.stringify({ revision, fields: draft, photo }));
-      else storage.removeItem(key);
+      writeDraft(portal, draft, photo);
       setDraftError('');
     } catch {
       setDraftError('O navegador não conseguiu guardar o rascunho neste dispositivo. Baixe o PDF para guardar uma cópia.');
@@ -251,25 +263,43 @@ function Enrollment() {
         setSent({ profileOnly: true });
         return;
       }
-      const { data, error } = await portal.client.rpc('save_current_enrollment', {
-        p_child: portal.child.id, p_schedule: values.schedule, p_unit: values.unit,
-        p_expected_updated_at: application?.updated_at ?? application?.created_at ?? null,
+      const payload = {
+        p_schedule: values.schedule, p_unit: values.unit,
         p_child_name: values.child.trim(), p_birth_date: values.birth,
         p_guardian_name: values.guardian.trim(), p_relationship: values.relationship.trim(),
         p_phone: values.phone.trim(),
-      }).single();
+      };
+      const request = portal.child ? portal.client.rpc('save_current_enrollment', {
+        ...payload, p_child: portal.child.id, p_expected_updated_at: application?.updated_at ?? application?.created_at ?? null,
+      }) : portal.client.rpc('create_current_enrollment', payload);
+      const { data, error } = await request.single();
       if (error || !data) throw error;
       const saved = { ...application, ...data, child_name: values.child.trim(), birth_date: values.birth,
         schedule: values.schedule, unit: values.unit, guardian_name: values.guardian.trim(),
         guardian_relationship: values.relationship.trim(), guardian_phone: values.phone.trim() };
       const updateProfile = !application || application.child_name !== saved.child_name || application.birth_date !== saved.birth_date;
-      setPortal(current => ({ ...current, child: updateProfile ? { ...current.child, full_name: saved.child_name, birth_date: saved.birth_date } : current.child,
-        application: saved }));
-      setDraft(current => Object.fromEntries(Object.entries(current).filter(([name]) => !onlineFields.includes(name))));
+      const child = updateProfile ? { id: portal.child?.id ?? data.child_id, full_name: saved.child_name, birth_date: saved.birth_date } : portal.child;
+      const nextPortal = { ...portal, child, application: saved };
+      const remainingDraft = Object.fromEntries(Object.entries(draft).filter(([name]) => !onlineFields.includes(name)));
+      if (!portal.child) {
+        try {
+          writeDraft(nextPortal, remainingDraft, photo);
+          const storage = portal.client.demo ? sessionStorage : localStorage;
+          storage.removeItem(draftKey(portal));
+        } catch {
+          // Keep the original draft if moving it to the new record fails.
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.delete('nova');
+        url.searchParams.set('crianca', child.id);
+        window.history.replaceState(null, '', url);
+      }
+      setPortal(nextPortal);
+      setDraft(remainingDraft);
       setSent(data);
     } catch (error) {
       setSendError(error?.code === '40001' ? 'Esta ficha foi atualizada desde que você abriu a página. Recarregue a ficha para conferir os dados atuais.'
-        : error?.code === '23505' ? 'Já existe uma criança com esse nome e data de nascimento na sua conta.'
+        : error?.code === '23505' ? 'Já existe uma criança com esse nome e data de nascimento. Abra a ficha dessa criança pelo Portal da Família.'
         : 'Não foi possível salvar a pré-matrícula. Confira os dados e tente novamente.');
     } finally {
       setSending(false);
@@ -288,7 +318,7 @@ function Enrollment() {
         <p className="enrollment-privacy"><ShieldCheck aria-hidden="true" size={21} />
           <span>{portal.client?.demo
             ? 'Modo de teste. Use apenas dados fictícios. A pré-matrícula de teste fica nesta aba e não é enviada à escola.'
-            : portal.child
+            : portal.user
             ? 'Sexo, endereço e foto ficam no rascunho deste navegador e podem ser incluídos no PDF.'
             : 'Entre no Portal da Família e abra a ficha pelo cadastro da criança.'}</span>
         </p>
@@ -297,7 +327,7 @@ function Enrollment() {
         </a>
         {portal.notice && <p role="status">{portal.notice}</p>}
         {draftError && <p role="status">{draftError}</p>}
-        {!portal.loading && portal.child && <form onSubmit={download} autoComplete="off">
+        {!portal.loading && portal.user && <form onSubmit={download} autoComplete="off">
           {sections.map(({ title, fields }) => (
             <fieldset key={title} className="enrollment-section" disabled={sending}>
               <legend>{title}</legend>
@@ -311,10 +341,10 @@ function Enrollment() {
           <fieldset className="enrollment-section enrollment-submit">
             <legend>{application ? 'Atualizar pré-matrícula' : 'Enviar à secretaria'}</legend>
             <p>A secretaria recebe nome e nascimento da criança, modalidade, unidade e dados do responsável.</p>
-            <button className="button" type="button" disabled={sending} onClick={send}>
+            <button className="button" type="button" disabled={sending || photoLoading} onClick={send}>
               {sending ? 'Salvando…' : application ? 'Salvar alterações' : 'Enviar pré-matrícula'}
             </button>
-            {!application && <button className="text-link" type="button" disabled={sending} onClick={event => send(event, true)}>
+            {portal.child && !application && <button className="text-link" type="button" disabled={sending} onClick={event => send(event, true)}>
               Salvar dados da criança
             </button>}
             {sendError && <div role="alert"><p>{sendError}</p>{sendError.startsWith('Esta ficha foi atualizada') &&

@@ -57,10 +57,7 @@ function History({ client, item }) {
 function Family({ client, user }) {
   const [children, setChildren] = useState(null);
   const [applications, setApplications] = useState([]);
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [busy, setBusy] = useState(false);
 
   async function load() {
     const [profiles, requests] = await Promise.all([
@@ -78,50 +75,13 @@ function Family({ client, user }) {
   }
   useEffect(refresh, [client, user.id]);
 
-  async function save(event) {
-    event.preventDefault();
-    setError('');
-    setNotice('');
-    setBusy(true);
-    try {
-      const data = new FormData(event.currentTarget);
-      const full_name = data.get('name').trim();
-      const birth_date = data.get('birth');
-      if (!full_name || !birth_date) {
-        setError('Informe o nome e a data de nascimento da criança.');
-        return;
-      }
-      const { error } = await client.from('enrollment_children').insert({ full_name, birth_date }).select('id').single();
-      if (error) throw error;
-      setCreating(false);
-      setNotice('Cadastro da criança salvo.');
-      refresh();
-    } catch (err) {
-      setError(err.code === '23505' ? 'Já existe uma criança com este nome e data de nascimento na sua conta.'
-        : 'Não foi possível salvar o cadastro. Confira os dados e tente novamente.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return <>
     <div className="portal-stack-head"><h2>Minhas crianças</h2>
-      <button className="button" type="button" onClick={() => { setCreating(true); setNotice(''); }}>Cadastrar criança</button>
+      <a className="button" href="./pre-matricula.html?nova=1">Cadastrar criança</a>
     </div>
-    {creating && <form className="portal-card" onSubmit={save}>
-      <h3>Cadastro da criança</h3>
-      <div className="enrollment-grid">
-        <div className="enrollment-field"><label htmlFor="child-name">Nome completo</label>
-          <input id="child-name" name="name" maxLength={120} required /></div>
-        <div className="enrollment-field"><label htmlFor="child-birth">Data de nascimento</label>
-          <input id="child-birth" name="birth" type="date" min="1900-01-01" max={today} required /></div>
-      </div>
-      <div className="portal-actions"><button className="button" disabled={busy}>Salvar cadastro</button>
-        <button className="text-link" type="button" disabled={busy} onClick={() => setCreating(false)}>Cancelar</button></div>
-    </form>}
-    <p role="status">{error || notice || (!children ? 'Carregando fichas…' : '')}</p>
+    <p role="status">{error || (!children ? 'Carregando fichas…' : '')}</p>
     {error && <button className="text-link" type="button" onClick={refresh}>Atualizar lista</button>}
-    {children?.length === 0 && !creating && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
+    {children?.length === 0 && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
     {children?.map(child => {
       const application = applications.find(item => item.child_id === child.id && item.school_year === enrollmentYear);
       return <article className="portal-card" key={child.id}>

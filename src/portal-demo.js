@@ -145,6 +145,16 @@ function saveFamilyEnrollment(db, params) {
   return result({ id, protocol: record.protocol, created: !previous, updated_at: record.updated_at });
 }
 
+function createFamilyEnrollment(db, params) {
+  const normalize = name => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+  if (db.enrollment_children.some(child => child.guardian_id === user.id && child.birth_date === params.p_birth_date
+    && normalize(child.full_name) === normalize(params.p_child_name))) return failure('23505');
+  const child_id = crypto.randomUUID();
+  db.enrollment_children.push({ id: child_id, guardian_id: user.id, full_name: params.p_child_name, birth_date: params.p_birth_date });
+  const { data, error } = saveFamilyEnrollment(db, { ...params, p_child: child_id, p_expected_updated_at: null });
+  return error ? { data, error } : result({ ...data, child_id });
+}
+
 export function createDemoClient() {
   return {
     demo: true,
@@ -152,6 +162,7 @@ export function createDemoClient() {
     from: query,
     rpc(name, params) {
       if (name === 'save_current_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
+      if (name === 'create_current_enrollment') return { async single() { return createFamilyEnrollment(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
       if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
       return Promise.resolve(failure('42883'));
