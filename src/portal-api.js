@@ -22,9 +22,10 @@ export const dateInSchool = () => new Intl.DateTimeFormat('sv-SE', { timeZone: '
 export const currentSchoolYear = () => Number(dateInSchool().slice(0, 4));
 export const formatDate = value => value?.slice(0, 10).split('-').reverse().join('/');
 
-let clientPromise;
-export function getPortalClient() {
-  clientPromise ??= (async () => {
+const clientPromises = {};
+export function getPortalClient({ staff = false } = {}) {
+  const area = staff ? 'staff' : 'family';
+  clientPromises[area] ??= (async () => {
     const response = await fetch(`${import.meta.env.BASE_URL}enrollment-config.json`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Falha ao carregar a configuração do portal.');
     const { url, publishableKey, enabled, demo } = await response.json();
@@ -38,9 +39,11 @@ export function getPortalClient() {
       throw new Error('O portal precisa de uma configuração válida.');
     }
     const { createClient } = await import('@supabase/supabase-js');
-    return createClient(url, publishableKey, { auth: { storageKey: 'cesc-enrollment-session' } });
+    return createClient(url, publishableKey, {
+      auth: { storageKey: `cesc-enrollment-session-${area}` },
+    });
   })();
-  return clientPromise;
+  return clientPromises[area];
 }
 
 export async function allRows(query) {

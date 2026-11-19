@@ -302,7 +302,7 @@ function Portal() {
   useEffect(() => {
     let active = true;
     let subscription;
-    getPortalClient().then(api => {
+    getPortalClient({ staff: staffMode }).then(api => {
       if (!active) return;
       setClient(api);
       if (!api) return;
