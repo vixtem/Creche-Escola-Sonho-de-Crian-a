@@ -44,35 +44,28 @@ const banners = [
     action: 'Ver fotos da escola',
     href: '#vivencias',
   },
-  {
-    name: 'Pré-matrícula',
-    eyebrow: 'PORTAL DA FAMÍLIA',
-    title: ['Um novo', 'começo para', 'sua criança'],
-    description: 'Inicie a pré-matrícula ou acompanhe sua solicitação no Portal da Família.',
-    image: experiences[1].image,
-    alt: experiences[1].label,
-    action: 'Fazer pré-matrícula',
-    href: './portal.html',
-  },
+
 ];
+const bannerNames = [...banners.map(({name}) => name), 'Pré-matrícula'];
 
 function HeroCarousel() {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const banner = banners[active];
+  const showEnrollment = active === banners.length;
+  const banner = banners[active] ?? banners[0];
 
   useEffect(() => {
     if (paused || focused || hovered) return;
-    const timer = window.setTimeout(() => setActive((active + 1) % banners.length), 7000);
+    const timer = window.setTimeout(() => setActive((active + 1) % bannerNames.length), 7000);
     return () => window.clearTimeout(timer);
   }, [active, paused, focused, hovered]);
 
   return (
     <section
       id="inicio"
-      className="hero section-wrap"
+      className={`hero section-wrap${showEnrollment ? ' hero-show-enrollment' : ''}`}
       aria-label="Destaques da escola"
       aria-roledescription="carrossel"
       onFocus={() => setFocused(true)}
@@ -80,6 +73,12 @@ function HeroCarousel() {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {showEnrollment && (
+        <div className="hero-enrollment" role="group" aria-roledescription="banner" aria-labelledby="hero-enrollment-title">
+          <h2 id="hero-enrollment-title">Matrículas <strong>abertas</strong></h2>
+          <a href="./portal.html">Fazer pré-matrícula <ArrowRight size={22} aria-hidden="true" /></a>
+        </div>
+      )}
       <div className="hero-carousel-text">
         <div className="hero-carousel-copy">
           {banners.map(({name, eyebrow, title, description, action, href}, index) => {
@@ -101,7 +100,7 @@ function HeroCarousel() {
                 </Heading>
                 <p>{description}</p>
                 <div className="hero-actions">
-                  <a className={index === 2 ? 'button' : 'text-link'} href={href}>
+                  <a className="text-link" href={href}>
                     {action} <ArrowRight size={18} aria-hidden="true" />
                   </a>
                 </div>
@@ -111,7 +110,7 @@ function HeroCarousel() {
         </div>
         <div className="hero-footnote"><Heart size={17} aria-hidden="true" /><span>Para crianças de <strong>2 a 5 anos</strong>. Para uma infância inteira.</span></div>
         <div className="hero-carousel-controls" role="group" aria-label="Controles dos banners">
-          {banners.map(({name}, index) => (
+          {bannerNames.map((name, index) => (
             <button key={name} type="button" aria-label={`Mostrar banner: ${name}`} aria-pressed={active === index} onClick={() => setActive(index)}>
               <span aria-hidden="true" />
             </button>
