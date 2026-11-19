@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
 import { sections, ageOnDate, enrollmentYear } from './enrollment-fields';
-import { enrollmentAddressFields, enrollmentDeclaration, enrollmentDetailsSections, imageConsentScope, visibleEnrollmentFields } from './enrollment-details';
+import { combineLegacyAddress, enrollmentAddressFields, enrollmentDeclaration, enrollmentDetailsSections, enrollmentHours, imageConsentScope, visibleEnrollmentFields } from './enrollment-details';
 import { Field, PhotoField } from './enrollment-controls';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
 import { allRows, dateInSchool, getPortalClient } from './portal-api';
@@ -71,10 +71,17 @@ function Enrollment() {
   const { application } = portal;
   const isEnrollment = application?.status === 'documents';
   const schoolPdf = portal.progress?.schoolPdf;
+  const enrollmentSections = isEnrollment ? [
+    ...sections.map(section => {
+      const extra = enrollmentDetailsSections.find(({ title }) => title === section.title);
+      return { ...section, fields: [...section.fields, ...extra?.fields ?? []] };
+    }),
+    ...enrollmentDetailsSections.filter(({ base }) => !base),
+  ] : sections;
 
   function openApplication(context) {
     const item = context.application;
-    const details = context.enrollmentDetails ?? {};
+    const details = combineLegacyAddress(context.enrollmentDetails ?? {});
     const saved = readDraft(context);
     const revisionMatches = saved.revision === draftRevision(context);
     const restored = Object.fromEntries(formFields
@@ -184,7 +191,7 @@ function Enrollment() {
 
   const birthDate = values.birth;
   const age = birthDate ? ageOnDate(birthDate, dateInSchool()) : null;
-  const answers = { ...values, age: age === null ? '' : `${age} ${age === 1 ? 'ano' : 'anos'}` };
+  const answers = { ...values, ...enrollmentHours(values.schedule), age: age === null ? '' : `${age} ${age === 1 ? 'ano' : 'anos'}` };
 
   async function download(event) {
     event.preventDefault();
@@ -235,6 +242,13 @@ function Enrollment() {
         return;
       }
     }
+    if (values.address.trim().length > form.elements.namedItem('address').maxLength) {
+      const address = form.elements.namedItem('address');
+      address.setCustomValidity('Use até 180 caracteres no endereço completo.');
+      address.reportValidity();
+      address.setCustomValidity('');
+      return;
+    }
     if (isEnrollment && values.imageConsent === 'Sim' && !/^\d{11}$/.test(values.consentCpf?.replace(/\D/g, ''))) {
       setSendError('Informe o CPF de quem autoriza o uso de imagem, com 11 dígitos.');
       return;
@@ -259,7 +273,7 @@ function Enrollment() {
       const details = Object.fromEntries([
         ...enrollmentAddressFields.map(([name]) => name), ...extraFields.map(({ name }) => name),
         ...(isEnrollment ? ['declarationAccepted'] : []),
-      ].filter(name => values[name]?.trim()).map(name => [name, values[name].trim()]));
+      ].filter(name => answers[name]?.trim()).map(name => [name, answers[name].trim()]));
       const request = portal.client.rpc('save_family_enrollment_record', {
         ...payload, p_child: portal.child?.id ?? null,
         p_expected_updated_at: application?.updated_at ?? application?.created_at ?? null,
@@ -325,23 +339,17 @@ function Enrollment() {
           <div><strong>Orientações da Secretaria</strong><div>{portal.progress.instructions}</div></div>
         </div>}
         {!portal.loading && portal.user && <form onSubmit={download} autoComplete="off">
-          {sections.map(({ title, fields }) => (
+          {enrollmentSections.map(({ title, fields }) => (
             <fieldset key={title} className="enrollment-section" disabled={sending}>
               <legend>{title}</legend>
+              {title === 'Autorização de uso de imagem' && <p>{imageConsentScope}</p>}
               <div className="enrollment-grid">
-                {fields.map(field => <Field key={field.name} field={field} values={answers} update={update} />)}
+                {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={field} values={answers} update={update} />)}
                 {fields[0].name === 'child' &&
                   <PhotoField photo={photo} error={photoError} loading={photoLoading} onChange={changePhoto} />}
               </div>
             </fieldset>
           ))}
-          {isEnrollment && enrollmentDetailsSections.map(({ title, fields }) => <fieldset key={title} className="enrollment-section" disabled={sending}>
-            <legend>{title}</legend>
-            {title === 'Autorização de uso de imagem' && <p>{imageConsentScope}</p>}
-            <div className="enrollment-grid">
-              {visibleEnrollmentFields(fields, values).map(field => <Field key={field.name} field={field} values={answers} update={update} />)}
-            </div>
-          </fieldset>)}
           {isEnrollment && <fieldset className="enrollment-section" disabled={sending}>
             <legend>Declaração do responsável</legend>
             <label className="enrollment-declaration">

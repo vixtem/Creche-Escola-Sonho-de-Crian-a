@@ -9,7 +9,8 @@ const healthQuestion = (name, label, detailLabel = 'Qual?') => [
 
 export const enrollmentDetailsSections = [
   {
-    title: 'Documentos e dados do aluno',
+    title: 'Dados da criança',
+    base: 'child',
     fields: [
       text('studentDocument', 'CPF ou RG da criança', { limit: 32 }),
       text('birthCertificate', 'Número da certidão de nascimento', { limit: 50 }),
@@ -17,12 +18,10 @@ export const enrollmentDetailsSections = [
       text('birthState', 'Estado', { limit: 40 }),
       text('nationality', 'Nacionalidade'),
       text('addressBlock', 'Quadra', { limit: 30 }),
-      text('addressNumber', 'Número', { limit: 30 }),
       text('residesWith', 'A criança reside com', { options: ['Pais', 'Mãe', 'Pai', 'Outros'] }),
       text('otherResident', 'Com quem a criança reside?', { when: ['residesWith', 'Outros'], wide: true }),
       text('sus', 'Número do cartão SUS', { limit: 25 }),
       text('studentNis', 'NIS da criança', { limit: 20 }),
-      text('guardianNis', 'NIS do responsável', { limit: 20 }),
     ],
   },
   {
@@ -42,13 +41,15 @@ export const enrollmentDetailsSections = [
   {
     title: 'Horário das aulas',
     fields: [
-      text('arrival', 'Entrada', { type: 'time' }),
-      text('departure', 'Saída', { type: 'time' }),
+      text('arrival', 'Entrada', { readOnly: true }),
+      text('departure', 'Saída', { readOnly: true }),
     ],
   },
   {
-    title: 'Identificação dos responsáveis',
+    title: 'Dados do responsável legal',
+    base: 'guardian',
     fields: [
+      text('guardianNis', 'NIS do responsável', { limit: 20 }),
       text('motherName', 'Nome da mãe', { wide: true }),
       text('motherJob', 'Profissão da mãe'),
       text('motherContact', 'Contato da mãe', { type: 'tel', limit: 30 }),
@@ -78,13 +79,14 @@ export const enrollmentAddressFields = [
 ];
 
 export const staffEnrollmentSections = [
-  { title: 'Dados da criança', fields: [
+  { ...enrollmentDetailsSections[0], fields: [
     text('sex', 'Sexo', { options: ['Feminino', 'Masculino', 'Prefiro não informar'] }),
     text('address', 'Endereço completo', { limit: 180, wide: true }),
     text('cep', 'CEP', { limit: 9 }),
     text('district', 'Bairro', { limit: 80 }),
+    ...enrollmentDetailsSections[0].fields,
   ] },
-  ...enrollmentDetailsSections,
+  ...enrollmentDetailsSections.slice(1),
   { title: 'Formalização da matrícula', fields: [
     text('registration_date', 'Data da matrícula', { type: 'date' }),
     text('grade', 'Série ou turma', { limit: 80 }),
@@ -94,4 +96,25 @@ export const staffEnrollmentSections = [
 
 export function visibleEnrollmentFields(fields, values) {
   return fields.filter(({ when }) => !when || values[when[0]] === when[1]);
+}
+
+const classHours = {
+  'Tempo Parcial (Matutino)': { arrival: '07:00', departure: '12:00' },
+  'Tempo Parcial (Vespertino)': { arrival: '13:00', departure: '17:00' },
+  'Tempo Integral': { arrival: '07:00', departure: '17:00' },
+};
+
+export function enrollmentHours(schedule) {
+  return classHours[schedule] ?? { arrival: '', departure: '' };
+}
+
+export function combineLegacyAddress(details = {}) {
+  const { addressNumber, ...fields } = details;
+  const number = addressNumber?.trim();
+  if (!number) return fields;
+  const address = fields.address?.trim() || '';
+  const tokens = address.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const numberTokens = number.match(/[\p{L}\p{N}]+/gu)?.join(' ');
+  if (numberTokens && ` ${tokens.join(' ').toLowerCase()} `.includes(` ${numberTokens.toLowerCase()} `)) return fields;
+  return { ...fields, address: [address, `nº ${number}`].filter(Boolean).join(', ') };
 }

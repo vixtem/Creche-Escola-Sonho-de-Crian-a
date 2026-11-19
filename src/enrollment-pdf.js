@@ -4,7 +4,7 @@ import {
 import fontkit from '@pdf-lib/fontkit';
 import { ageOnDate, enrollmentYear, schoolUnits, sections, studyModes } from './enrollment-fields.js';
 import { school } from './school.js';
-import { enrollmentDeclaration, imageConsentScope, staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details.js';
+import { combineLegacyAddress, enrollmentAddressFields, enrollmentDeclaration, enrollmentHours, imageConsentScope, staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details.js';
 import { dateInSchool, formatDate, states } from './portal-api.js';
 
 const width = 595.28;
@@ -197,9 +197,17 @@ async function createSheet(answers, fonts, {
     ].map((block, index) => ({ ...block, index, title: sections[index].title, photo: block.key === 'child' }));
     if (schoolSections) {
       const keys = Object.keys(colors);
-      schoolSections.forEach(({ title, rows }, sectionIndex) => {
-        const index = blocks.length;
-        blocks.push({ title, index, key: keys[sectionIndex % keys.length], rows: rows.map(entries => row(entries)) });
+      schoolSections.forEach(({ title, rows, base }, sectionIndex) => {
+        const block = blocks.find(({ key }) => key === base);
+        if (block) {
+          if (block.photo) {
+            const height = block.rows.reduce((total, item) => total + item.height, 0);
+            block.rows.at(-1).height += Math.max(0, photoHeight + rowGap - height);
+          }
+          block.rows.push(...rows.map(entries => row(entries)));
+        } else {
+          blocks.push({ title, index: blocks.length, key: keys[sectionIndex % keys.length], rows: rows.map(entries => row(entries)) });
+        }
       });
     }
 
@@ -379,7 +387,7 @@ async function createSheet(answers, fonts, {
 }
 
 export function createSchoolEnrollmentPdf(item, record, fonts, brand) {
-  const details = record?.details ?? {};
+  const details = combineLegacyAddress(record?.details);
   const age = item.birth_date ? ageOnDate(item.birth_date, dateInSchool()) : null;
   const answers = {
     child: item.child_name,
@@ -396,12 +404,12 @@ export function createSchoolEnrollmentPdf(item, record, fonts, brand) {
     email: item.guardian_email,
     unit: item.unit,
   };
-  const values = { ...details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
-  const [, ...extraSections] = staffEnrollmentSections;
-  const schoolSections = extraSections.map(({ title, fields }) => {
+  const values = { ...details, ...enrollmentHours(item.schedule), registration_date: formatDate(record?.registration_date), grade: record?.grade };
+  const addressFields = new Set(enrollmentAddressFields.map(([name]) => name));
+  const schoolSections = staffEnrollmentSections.map(({ title, fields, base }) => {
     const rows = [];
     let pair = [];
-    const visible = visibleEnrollmentFields(fields, values);
+    const visible = visibleEnrollmentFields(fields, values).filter(({ name }) => !addressFields.has(name));
     for (let index = 0; index < visible.length; index += 1) {
       const { name, label, wide } = visible[index];
       const followUp = visible[index + 1];
@@ -423,7 +431,7 @@ export function createSchoolEnrollmentPdf(item, record, fonts, brand) {
       }
     }
     if (pair.length) rows.push(pair);
-    return { title, rows };
+    return { title, rows, base };
   });
   schoolSections[schoolSections.length - 2].rows.push([['Escopo da autorização', imageConsentScope]]);
   schoolSections[schoolSections.length - 1].rows.push(

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LogOut, Printer } from 'lucide-react';
 import { ageOnDate, enrollmentYear, schoolUnits, studyModes } from './enrollment-fields';
-import { staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details';
+import { combineLegacyAddress, enrollmentHours, staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details';
 import { Field, PhotoField } from './enrollment-controls';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
 import { allRows, dateInSchool, formatDate, getPortalClient, states, transitions } from './portal-api';
@@ -23,14 +23,14 @@ const secretariatTabs = [
 const historyFields = 'id, status, family_message, changed_at';
 const today = dateInSchool();
 const sheetFields = [
-  { name: 'child_name', label: 'Nome completo da criança', input: { maxLength: 120 } },
-  { name: 'birth_date', label: 'Data de nascimento', input: { type: 'date', min: '1900-01-01', max: today } },
-  { name: 'schedule', label: 'Turno', options: studyModes },
+  { name: 'child_name', base: 'child', label: 'Nome completo da criança', input: { maxLength: 120 } },
+  { name: 'birth_date', base: 'child', label: 'Data de nascimento', input: { type: 'date', min: '1900-01-01', max: today } },
+  { name: 'schedule', label: 'Modalidade de estudo', options: studyModes },
   { name: 'unit', label: 'Unidade', options: schoolUnits, optional: true },
-  { name: 'guardian_name', label: 'Nome do responsável', input: { maxLength: 120 } },
-  { name: 'guardian_relationship', label: 'Parentesco ou vínculo', input: { maxLength: 80 } },
-  { name: 'guardian_phone', label: 'Telefone com DDD', input: { type: 'tel', maxLength: 24 } },
-  { name: 'guardian_email', label: 'E-mail de contato', input: { type: 'email', maxLength: 254 } },
+  { name: 'guardian_name', base: 'guardian', label: 'Nome do responsável', input: { maxLength: 120 } },
+  { name: 'guardian_relationship', base: 'guardian', label: 'Parentesco ou vínculo', input: { maxLength: 80 } },
+  { name: 'guardian_phone', base: 'guardian', label: 'Telefone com DDD', input: { type: 'tel', maxLength: 24 } },
+  { name: 'guardian_email', base: 'guardian', label: 'E-mail de contato', input: { type: 'email', maxLength: 254 } },
 ];
 
 function History({ client, item }) {
@@ -186,7 +186,8 @@ function SchoolEnrollmentDetails({ client, item }) {
     }
   }
 
-  const values = { ...record?.details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
+  const values = { ...item, ...combineLegacyAddress(record?.details), ...enrollmentHours(item.schedule),
+    birth_date: formatDate(item.birth_date), registration_date: formatDate(record?.registration_date), grade: record?.grade };
 
   return <details className="portal-history" onToggle={read}>
     <summary>Dados da ficha de matrícula</summary>
@@ -196,8 +197,9 @@ function SchoolEnrollmentDetails({ client, item }) {
     </div>}
     {record && <p>Dados atualizados em {formatDate(record.record_updated_at)}.</p>}
     {record?.photo && <img className="portal-enrollment-photo" src={record.photo} alt="Foto 3×4 da criança" />}
-    {record && staffEnrollmentSections.map(({ title, fields }) => {
-      const filled = visibleEnrollmentFields(fields, values).filter(({ name }) => values[name]);
+    {record && staffEnrollmentSections.map(({ title, fields, base }) => {
+      const basicFields = base ? sheetFields.filter(field => field.base === base) : [];
+      const filled = [...basicFields, ...visibleEnrollmentFields(fields, values)].filter(({ name }) => values[name]);
       if (!filled.length) return null;
       return <section className="portal-enrollment-details" key={title}>
         <h4>{title}</h4>
@@ -269,6 +271,7 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [details, setDetails] = useState(null);
+  const [schedule, setSchedule] = useState(item.schedule);
   const [photo, setPhoto] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
@@ -277,7 +280,7 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
     let active = true;
     loadEnrollmentRecord(client, item.id).then(record => {
       if (!active) return;
-      setDetails({ ...record?.details, registration_date: record?.registration_date ?? '', grade: record?.grade ?? '' });
+      setDetails({ ...combineLegacyAddress(record?.details), registration_date: record?.registration_date ?? '', grade: record?.grade ?? '' });
       setPhoto(record?.photo ?? null);
     }).catch(() => {
       if (active) setError({ code: 'load', message: 'Não foi possível carregar a ficha completa.' });
@@ -317,7 +320,7 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
     setBusy(true);
     setError(null);
     try {
-      const { registration_date, grade, ...storedDetails } = details;
+      const { registration_date, grade, ...storedDetails } = { ...details, ...enrollmentHours(values.schedule) };
       const allowedFields = staffEnrollmentSections.flatMap(({ fields }) => visibleEnrollmentFields(fields, details));
       const payload = Object.fromEntries(allowedFields.map(({ name }) => [name, storedDetails[name]?.trim()]).filter(([, value]) => value));
       const { error } = await client.rpc('edit_enrollment_record', {
@@ -343,24 +346,33 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
     }
   }
 
+  function basicField({ name, label, input, options, optional }) {
+    return <div className="enrollment-field" key={name}>
+      <label htmlFor={`sheet-${name}`}>{label}</label>
+      {options ? <select id={`sheet-${name}`} name={name} required={!optional}
+        {...(name === 'schedule' ? { value: schedule, onChange: event => setSchedule(event.target.value) }
+          : { defaultValue: item[name] ?? '' })}>
+        {optional && <option value="">Não informada</option>}
+        {Object.entries(options).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required={!optional} />}
+    </div>;
+  }
+
+  const answers = { ...details, ...enrollmentHours(schedule) };
+
   return <form onSubmit={save}>
     <h3>Editar ficha de {item.child_name}</h3>
     <fieldset className="enrollment-grid portal-edit-fields" disabled={busy || !details}>
-      {sheetFields.map(({ name, label, input, options, optional }) => <div className="enrollment-field" key={name}>
-        <label htmlFor={`sheet-${name}`}>{label}</label>
-        {options ? <select id={`sheet-${name}`} name={name} defaultValue={item[name] ?? ''} required={!optional}>
-          {optional && <option value="">Não informada</option>}
-          {Object.entries(options).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required={!optional} />}
-      </div>)}
+      {sheetFields.filter(({ base }) => !base).map(basicField)}
     </fieldset>
     {!details && !error && <p role="status">Carregando ficha completa…</p>}
-    {details && staffEnrollmentSections.map(({ title, fields }, index) => <fieldset className="enrollment-section" key={title} disabled={busy}>
+    {details && staffEnrollmentSections.map(({ title, fields, base }) => <fieldset className="enrollment-section" key={title} disabled={busy}>
       <legend>{title}</legend>
       <div className="enrollment-grid">
-        {visibleEnrollmentFields(fields, details).map(field => <Field key={field.name} field={{ ...field, optional: true }} values={details}
+        {base && sheetFields.filter(field => field.base === base).map(basicField)}
+        {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={{ ...field, optional: true }} values={answers}
           update={(name, value) => setDetails(current => ({ ...current, [name]: value }))} />)}
-        {index === 0 && <PhotoField photo={photo} loading={photoLoading} error={photoError} onChange={changePhoto} />}
+        {base === 'child' && <PhotoField photo={photo} loading={photoLoading} error={photoError} onChange={changePhoto} />}
       </div>
     </fieldset>)}
     <div className="portal-actions">
