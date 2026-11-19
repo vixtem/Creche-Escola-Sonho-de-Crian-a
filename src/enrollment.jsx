@@ -285,7 +285,6 @@ function Enrollment() {
   return (
     <main className="enrollment">
       <div className="enrollment-shell">
-        <a href="./" className="enrollment-back"><ArrowLeft size={18} /> Voltar ao site da escola</a>
         <div className="enrollment-intro">
           <img className="enrollment-logo" src={`${import.meta.env.BASE_URL}images/marca-cesc.png`} width="600" height="365" alt="" />
           <p className="enrollment-school">{school.fullName}</p>
@@ -299,7 +298,9 @@ function Enrollment() {
             ? 'Os dados enviados à secretaria ficam no portal. Os demais campos e a foto ficam no rascunho deste navegador e podem ser incluídos no PDF.'
             : 'Preencha a ficha e baixe o PDF de uma página para apresentar à secretaria. Neste modo, os dados ficam no dispositivo.'}</span>
         </p>
-        <a className="text-link enrollment-portal-link" href="./portal.html">Portal da família · cadastro e acompanhamento</a>
+        <a className="button enrollment-portal-link" href="./portal.html">
+          <ArrowLeft size={19} aria-hidden="true" /> Voltar ao Portal da Família
+        </a>
         {portal.notice && <p role="status">{portal.notice}</p>}
         {draftError && <p role="status">{draftError}</p>}
         {!portal.loading && <form onSubmit={download} autoComplete="off">
