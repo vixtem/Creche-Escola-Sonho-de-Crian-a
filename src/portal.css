@@ -74,6 +74,7 @@
 .portal-password button { position: absolute; inset: 0 0 0 auto; display: grid; place-items: center; width: 48px; background: transparent; color: var(--login-accent); }
 .portal-login-links { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .portal-login-links button { color: var(--login-accent); }
+.portal-login--family .portal-login-links .text-link { font-size: 14px; }
 .portal-login-error { color: #97243a; margin-top: 10px; }
 .portal-login-feedback { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
 .portal-login-demo { margin-top: 16px; padding: 12px; border-radius: 10px; background: var(--login-tint); }
