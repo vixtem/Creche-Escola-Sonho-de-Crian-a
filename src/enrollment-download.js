@@ -1,6 +1,7 @@
 import regularUrl from '@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff?url';
 import boldUrl from '@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff?url';
 import { createEnrollmentPdf } from './enrollment-pdf';
+import { enrollmentYear } from './enrollment-fields';
 
 async function loadAsset(url) {
   const response = await fetch(url);
@@ -19,7 +20,8 @@ export async function downloadEnrollmentPdf(answers, photo) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'ficha-pre-matricula-sonho-de-crianca.pdf';
+  const childName = answers.child.normalize('NFC').replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+  link.download = `pre-matricula_${childName || 'crianca'}_${enrollmentYear}.pdf`;
   document.body.append(link);
   link.click();
   link.remove();
