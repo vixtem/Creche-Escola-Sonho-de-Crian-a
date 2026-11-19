@@ -6,5 +6,5 @@ export const school = {
   whatsapp: '', // DDI + DDD + número, apenas dígitos. Ex.: 5598XXXXXXXXX
   address: '',
   hours: '',
-  instagram: '', // URL completa do perfil oficial
+  instagram: 'https://www.instagram.com/crecheescolasonhodecrianca/',
 };
