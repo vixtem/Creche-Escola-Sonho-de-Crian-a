@@ -5,7 +5,11 @@ import { school } from './school';
 import './styles.css';
 
 const asset = (name) => `${import.meta.env.BASE_URL}images/${name}`;
-const links = [['Vivências', 'vivencias']];
+const links = [
+  ['Vivências', '#vivencias'],
+  ['Portal da Família', './portal.html'],
+  ['Secretaria', './portal.html?area=secretaria'],
+];
 
 function Brand({ footer = false }) {
   return (
@@ -162,7 +166,7 @@ function App() {
   return <>
     <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
     <div className="topline"><span>Pequenas descobertas. Grandes começos.</span><span><span className="status-dot"/> Educação infantil · 2 a 5 anos</span></div>
-    <header><div className="nav-wrap"><Brand/><nav id="main-navigation" aria-label="Menu principal" className={menu ? 'is-open' : ''}>{links.map(([label, id]) => <a key={id} href={`#${id}`} onClick={() => setMenu(false)}>{label}</a>)}<a href={school.instagram} target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>Instagram</a><a className="button small nav-contact" href="#contato" onClick={() => setMenu(false)}>Vamos conversar <ArrowUpRight size={17}/></a></nav><button className="menu-toggle" aria-label={menu ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button></div></header>
+    <header><div className="nav-wrap"><Brand/><nav id="main-navigation" aria-label="Menu principal" className={menu ? 'is-open' : ''}>{links.map(([label, href]) => <a key={href} href={href} onClick={() => setMenu(false)}>{label}</a>)}<a href={school.instagram} target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>Instagram</a><a className="button small nav-contact" href="#contato" onClick={() => setMenu(false)}>Vamos conversar <ArrowUpRight size={17}/></a></nav><button className="menu-toggle" aria-label={menu ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button></div></header>
     <main id="conteudo">
       <HeroCarousel />
       <div className="values-ribbon" aria-label="Valores que inspiram este projeto"><div><span>Aprender brincando</span><Sparkles/><span>Crescer com afeto</span><Sparkles/><span>Imaginar sem limites</span><Sparkles/><span>Descobrir o mundo</span><Sparkles/></div></div>
