@@ -4,6 +4,9 @@ import {
 import fontkit from '@pdf-lib/fontkit';
 import { enrollmentYear, schoolUnits, sections, studyModes } from './enrollment-fields.js';
 import { school } from './school.js';
+import { enrollmentDeclaration, imageConsentScope, staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details.js';
+import { dateInSchool, formatDate, states } from './portal-api.js';
+import { ageOnDate } from './enrollment-fields.js';
 
 const width = 595.28;
 const height = 841.89;
@@ -246,5 +249,107 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
 
   horizontalRule(margin, 35, boxWidth, rule);
   draw('Pré-matrícula sujeita à confirmação da escola.', margin, 21, 9, regular, muted);
+  return pdf.save();
+}
+
+export async function createSchoolEnrollmentPdf(item, record, fonts, brand) {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`Ficha de matrícula ${item.school_year} | ${item.child_name}`);
+  pdf.setLanguage('pt-BR');
+  pdf.setAuthor(school.fullName);
+  pdf.registerFontkit(fontkit);
+  const regular = await pdf.embedFont(fonts.regular, { subset: true });
+  const bold = await pdf.embedFont(fonts.bold, { subset: true });
+  const logo = brand ? await pdf.embedPng(brand) : null;
+  const photo = record?.photo ? await pdf.embedJpg(record.photo) : null;
+  const charset = new Set(regular.getCharacterSet());
+  const safe = value => Array.from(String(value ?? '—').normalize('NFC'), character =>
+    character === '\n' || charset.has(character.codePointAt(0)) ? character : '�').join('');
+  let page;
+  let y;
+
+  function line(text, x, position, size = 10, font = regular, color = ink) {
+    page.drawText(safe(text), { x, y: position, size, font, color });
+  }
+
+  function addPage(first = false) {
+    page = pdf.addPage([width, height]);
+    if (logo) {
+      const image = logo.scaleToFit(64, 42);
+      page.drawImage(logo, { x: margin, y: height - margin - image.height, ...image });
+    }
+    const headingX = logo ? margin + 76 : margin;
+    const photoSize = first && photo ? { width: 75, height: 100 } : null;
+    if (photoSize) page.drawImage(photo, { x: width - margin - photoSize.width, y: height - margin - photoSize.height, ...photoSize });
+    line(`Ficha de matrícula ${item.school_year}`, headingX, height - margin - 18, 19, bold, navy);
+    line(school.fullName, headingX, height - margin - 36, 11, bold);
+    let nameY = height - margin - 56;
+    for (const part of wrap(safe(item.child_name), regular, 11, width - margin - headingX - (photoSize ? 85 : 0))) {
+      line(part, headingX, nameY, 11);
+      nameY -= 14;
+    }
+    line(`Protocolo ${item.protocol}`, headingX, nameY, 9, regular, muted);
+    y = Math.min(nameY - 22, height - margin - (photoSize ? photoSize.height + 22 : 0));
+  }
+
+  function heading(title) {
+    if (y < 100) addPage();
+    page.drawRectangle({ x: margin, y: y - 5, width: boxWidth, height: 22, color: rgb(.91, .96, .97) });
+    line(title, margin + 9, y + 2, 11.5, bold, navy);
+    y -= 24;
+  }
+
+  function row(label, value) {
+    const labelWidth = 228;
+    const labels = wrap(safe(label), bold, 9.5, labelWidth - 14);
+    const parts = safe(value || '—').split(/\r?\n/).flatMap(value => wrap(value, regular, 10, boxWidth - labelWidth - 11));
+    const rows = Math.max(labels.length, parts.length);
+    if (y - 13 * Math.min(rows, 3) < bottom + 13) addPage();
+    for (let index = 0; index < rows; index += 1) {
+      if (y < bottom + 13) {
+        addPage();
+        line(`${label} (continuação)`, margin + 8, y, 8, bold, muted);
+        y -= 13;
+      }
+      if (labels[index]) line(labels[index], margin + 8, y, 9.5, bold, muted);
+      if (parts[index]) line(parts[index], margin + labelWidth, y);
+      y -= 13;
+    }
+    y -= 7;
+  }
+
+  const values = { ...record?.details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
+  const age = item.birth_date ? ageOnDate(item.birth_date, dateInSchool()) : null;
+  const groups = [
+    { title: 'Identificação e pré-matrícula', rows: [
+      ['Nome da criança', item.child_name], ['Data de nascimento', formatDate(item.birth_date)],
+      ['Idade na emissão', age === null ? '' : String(age)], ['Ano letivo', String(item.school_year)],
+      ['Modalidade', studyModes[item.schedule]], ['Unidade', schoolUnits[item.unit]], ['Situação', states[item.status]],
+    ] },
+    { title: 'Contato do responsável', rows: [
+      ['Nome', item.guardian_name], ['Vínculo', item.guardian_relationship], ['Telefone', item.guardian_phone], ['E-mail', item.guardian_email],
+    ] },
+    ...staffEnrollmentSections.map(({ title, fields }) => ({
+      title, rows: visibleEnrollmentFields(fields, values).map(({ name, label }) => [label, values[name]]),
+    })),
+  ];
+  addPage(true);
+  for (const group of groups) {
+    heading(group.title);
+    for (const [label, value] of group.rows) row(label, value);
+    if (group.title === 'Autorização de uso de imagem') row('Escopo da autorização', imageConsentScope);
+    if (group.title === 'Formalização da matrícula') row('Declaração do responsável', enrollmentDeclaration);
+    y -= 7;
+  }
+  if (y < 91) addPage();
+  page.drawLine({ start: { x: margin, y: y - 14 }, end: { x: margin + 250, y: y - 14 }, thickness: .7, color: rule });
+  line('Assinatura do responsável', margin, y - 28, 9, regular, muted);
+
+  const pages = pdf.getPages();
+  pages.forEach((sheet, index) => {
+    page = sheet;
+    line('Creche Escola Sonho de Criança · Secretaria', margin, 22, 8, regular, muted);
+    line(`${index + 1} / ${pages.length}`, width - margin - 36, 22, 8, regular, muted);
+  });
   return pdf.save();
 }

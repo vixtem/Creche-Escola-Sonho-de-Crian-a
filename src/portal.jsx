@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LogOut, Printer } from 'lucide-react';
 import { ageOnDate, enrollmentYear, schoolUnits, studyModes } from './enrollment-fields';
-import { enrollmentAddressFields, enrollmentDetailsSections, visibleEnrollmentFields } from './enrollment-details';
+import { staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details';
+import { Field, PhotoField } from './enrollment-controls';
+import { prepareEnrollmentPhoto } from './enrollment-photo';
 import { allRows, dateInSchool, formatDate, getPortalClient, states, transitions } from './portal-api';
 import { school } from './school';
 import { PortalLogin } from './portal-login';
@@ -23,7 +25,8 @@ const today = dateInSchool();
 const sheetFields = [
   { name: 'child_name', label: 'Nome completo da criança', input: { maxLength: 120 } },
   { name: 'birth_date', label: 'Data de nascimento', input: { type: 'date', min: '1900-01-01', max: today } },
-  { name: 'schedule', label: 'Turno', options: schedules },
+  { name: 'schedule', label: 'Turno', options: studyModes },
+  { name: 'unit', label: 'Unidade', options: schoolUnits, optional: true },
   { name: 'guardian_name', label: 'Nome do responsável', input: { maxLength: 120 } },
   { name: 'guardian_relationship', label: 'Parentesco ou vínculo', input: { maxLength: 80 } },
   { name: 'guardian_phone', label: 'Telefone com DDD', input: { type: 'tel', maxLength: 24 } },
@@ -129,20 +132,26 @@ function Family({ client, user }) {
   </>;
 }
 
-function SchoolEnrollmentDetails({ client, applicationId }) {
+async function loadEnrollmentRecord(client, applicationId) {
+  const { data, error } = await client.from('enrollment_form_details').select('details, photo, registration_date, grade, record_updated_at')
+    .eq('application_id', applicationId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+function SchoolEnrollmentDetails({ client, item }) {
   const [record, setRecord] = useState(undefined);
   const [error, setError] = useState('');
   const loading = useRef(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
 
   async function read(event) {
     if (!event.currentTarget.open || record !== undefined || loading.current) return;
     loading.current = true;
     setError('');
     try {
-      const { data, error } = await client.from('enrollment_form_details').select('details, submitted_at')
-        .eq('application_id', applicationId).maybeSingle();
-      if (error) throw error;
-      setRecord(data);
+      setRecord(await loadEnrollmentRecord(client, item.id));
     } catch {
       setError('Não foi possível carregar a ficha. Feche e abra novamente para tentar.');
     } finally {
@@ -150,23 +159,37 @@ function SchoolEnrollmentDetails({ client, applicationId }) {
     }
   }
 
-  const groups = record && [
-    { title: 'Dados da criança', fields: enrollmentAddressFields.map(([name, label]) => ({ name, label })) },
-    ...enrollmentDetailsSections,
-    { title: 'Declaração do responsável', fields: [{ name: 'declarationAccepted', label: 'Ciência confirmada' }] },
-  ];
+  async function download() {
+    setDownloading(true);
+    setDownloadError('');
+    try {
+      const { downloadSchoolEnrollmentPdf } = await import('./enrollment-download');
+      await downloadSchoolEnrollmentPdf(item, record);
+    } catch {
+      setDownloadError('Não foi possível gerar o PDF. Tente novamente.');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const values = { ...record?.details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
 
   return <details className="portal-history" onToggle={read}>
     <summary>Dados da ficha de matrícula</summary>
-    <p role="status">{error || (record === undefined ? 'Carregando ficha…' : record === null ? 'Ficha de matrícula ainda não enviada.' : '')}</p>
-    {record && <p>Dados enviados em {formatDate(record.submitted_at)}.</p>}
-    {groups?.map(({ title, fields }) => {
-      const filled = visibleEnrollmentFields(fields, record.details).filter(({ name }) => record.details[name]);
+    <p role="status">{error || (record === undefined ? 'Carregando ficha…' : record === null ? 'Ainda não há dados complementares nesta ficha.' : '')}</p>
+    {record !== undefined && <div className="portal-actions">
+      <button className="button" type="button" disabled={downloading} onClick={download}>{downloading ? 'Gerando PDF…' : 'Baixar ficha completa em PDF'}</button>
+    </div>}
+    {downloadError && <p role="alert">{downloadError}</p>}
+    {record && <p>Dados atualizados em {formatDate(record.record_updated_at)}.</p>}
+    {record?.photo && <img className="portal-enrollment-photo" src={record.photo} alt="Foto 3×4 da criança" />}
+    {record && staffEnrollmentSections.map(({ title, fields }) => {
+      const filled = visibleEnrollmentFields(fields, values).filter(({ name }) => values[name]);
       if (!filled.length) return null;
       return <section className="portal-enrollment-details" key={title}>
         <h4>{title}</h4>
         <dl className="portal-family-request-details">
-          {filled.map(({ name, label }) => <div key={name}><dt>{label}</dt><dd>{record.details[name]}</dd></div>)}
+          {filled.map(({ name, label }) => <div key={name}><dt>{label}</dt><dd>{values[name]}</dd></div>)}
         </dl>
       </section>;
     })}
@@ -208,7 +231,7 @@ function Decision({ client, item, onSaved }) {
     <p><strong>Responsável:</strong> {item.guardian_name} ({item.guardian_relationship}) · {item.guardian_phone} · {item.guardian_email}</p>
     <p><strong>Protocolo:</strong> <code>{item.protocol}</code></p>
     <History client={client} item={item} />
-    <SchoolEnrollmentDetails client={client} applicationId={item.id} />
+    <SchoolEnrollmentDetails client={client} item={item} />
     {options.length > 0 && <form onSubmit={submit}>
       <div className="enrollment-grid portal-decision-fields">
         <div className="enrollment-field">
@@ -232,12 +255,44 @@ function Decision({ client, item, onSaved }) {
 function EditApplication({ client, item, onCancel, onSaved, onReload }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [photo, setPhoto] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    loadEnrollmentRecord(client, item.id).then(record => {
+      if (!active) return;
+      setDetails({ ...record?.details, registration_date: record?.registration_date ?? '', grade: record?.grade ?? '' });
+      setPhoto(record?.photo ?? null);
+    }).catch(() => {
+      if (active) setError({ code: 'load', message: 'Não foi possível carregar a ficha completa.' });
+    });
+    return () => { active = false; };
+  }, [client, item.id]);
+
+  async function changePhoto(input) {
+    const file = input.files[0];
+    setPhotoError('');
+    if (!file) { setPhoto(null); return; }
+    setPhotoLoading(true);
+    try {
+      setPhoto(await prepareEnrollmentPhoto(file));
+    } catch (error) {
+      input.value = '';
+      setPhotoError(error.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
 
   async function save(event) {
     event.preventDefault();
+    if (!details || photoLoading || busy) return;
     const form = new FormData(event.currentTarget);
     const values = Object.fromEntries(sheetFields.map(({ name }) => [name, form.get(name).trim()]));
-    if (Object.values(values).includes('')) {
+    if (sheetFields.some(({ name, optional }) => !optional && !values[name])) {
       setError({ message: 'Preencha todos os campos da ficha.' });
       return;
     }
@@ -249,11 +304,15 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
     setBusy(true);
     setError(null);
     try {
-      const { error } = await client.rpc('edit_enrollment_application', {
+      const { registration_date, grade, ...storedDetails } = details;
+      const allowedFields = staffEnrollmentSections.flatMap(({ fields }) => visibleEnrollmentFields(fields, details));
+      const payload = Object.fromEntries(allowedFields.map(({ name }) => [name, storedDetails[name]?.trim()]).filter(([, value]) => value));
+      const { error } = await client.rpc('edit_enrollment_record', {
         p_application: item.id,
         p_expected_updated_at: item.updated_at || item.created_at,
-        p_school_year: item.school_year,
         ...Object.fromEntries(Object.entries(values).map(([key, value]) => [`p_${key}`, value])),
+        p_unit: values.unit || null, p_details: payload, p_photo: photo,
+        p_registration_date: registration_date || null, p_grade: grade || null,
       });
       if (error) throw error;
       onSaved();
@@ -261,6 +320,7 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
       const messages = {
         '40001': 'A ficha mudou desde que foi aberta. Recarregue a ficha para conferir a versão atual.',
         '22023': 'Confira os dados informados na ficha.',
+        '23505': 'Já existe uma criança com o mesmo nome e data de nascimento nesta conta.',
         '42501': 'A conta atual não tem permissão para editar esta ficha.',
         P0002: 'Esta ficha não está mais disponível.',
       };
@@ -272,17 +332,27 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
 
   return <form onSubmit={save}>
     <h3>Editar ficha de {item.child_name}</h3>
-    <fieldset className="enrollment-grid portal-edit-fields" disabled={busy}>
-      {sheetFields.map(({ name, label, input, options }) => <div className="enrollment-field" key={name}>
+    <fieldset className="enrollment-grid portal-edit-fields" disabled={busy || !details}>
+      {sheetFields.map(({ name, label, input, options, optional }) => <div className="enrollment-field" key={name}>
         <label htmlFor={`sheet-${name}`}>{label}</label>
-        {options ? <select id={`sheet-${name}`} name={name} defaultValue={item[name]} required>
-          {options.map(option => <option key={option} value={option}>{studyModes[option]}</option>)}
-        </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required />}
+        {options ? <select id={`sheet-${name}`} name={name} defaultValue={item[name] ?? ''} required={!optional}>
+          {optional && <option value="">Não informada</option>}
+          {Object.entries(options).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required={!optional} />}
       </div>)}
     </fieldset>
+    {!details && !error && <p role="status">Carregando ficha completa…</p>}
+    {details && staffEnrollmentSections.map(({ title, fields }, index) => <fieldset className="enrollment-section" key={title} disabled={busy}>
+      <legend>{title}</legend>
+      <div className="enrollment-grid">
+        {visibleEnrollmentFields(fields, details).map(field => <Field key={field.name} field={{ ...field, optional: true }} values={details}
+          update={(name, value) => setDetails(current => ({ ...current, [name]: value }))} />)}
+        {index === 0 && <PhotoField photo={photo} loading={photoLoading} error={photoError} onChange={changePhoto} />}
+      </div>
+    </fieldset>)}
     <div className="portal-actions">
-      <button className="button" disabled={busy || error?.code === '40001'}>{busy ? 'Salvando…' : 'Salvar alterações'}</button>
-      {error?.code === '40001' && <button type="button" className="text-link" onClick={onReload}>Recarregar ficha</button>}
+      <button className="button" disabled={busy || photoLoading || !details || error?.code === '40001'}>{busy ? 'Salvando…' : 'Salvar alterações'}</button>
+      {['40001', 'load'].includes(error?.code) && <button type="button" className="text-link" onClick={onReload}>Recarregar ficha</button>}
       <button type="button" className="text-link" disabled={busy} onClick={onCancel}>Cancelar</button>
     </div>
     <p role="status">{error?.message}</p>

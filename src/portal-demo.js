@@ -171,6 +171,36 @@ function saveEnrollmentForm(db, params) {
   return saved;
 }
 
+function saveFamilyEnrollmentRecord(db, params) {
+  const application = db.enrollment_applications.find(row => row.child_id === params.p_child && row.school_year === enrollmentYear);
+  const previous = db.enrollment_form_details.find(row => row.application_id === application?.id);
+  const saved = params.p_is_enrollment ? saveEnrollmentForm(db, params)
+    : params.p_child ? saveFamilyEnrollment(db, params) : createFamilyEnrollment(db, params);
+  if (saved.error) return saved;
+  const details = params.p_is_enrollment ? params.p_details : { ...previous?.details, ...params.p_details };
+  if (!params.p_is_enrollment && !Object.hasOwn(params.p_details, 'cep')) delete details.cep;
+  db.enrollment_form_details = db.enrollment_form_details.filter(row => row.application_id !== saved.data.id);
+  db.enrollment_form_details.push({ ...previous, application_id: saved.data.id, details,
+    photo: params.p_photo, photo_saved: true, record_updated_at: now() });
+  save(db);
+  return saved;
+}
+
+function editEnrollmentRecord(db, params) {
+  const application = db.enrollment_applications.find(row => row.id === params.p_application);
+  if (!application) return failure('P0002');
+  const saved = editApplication(db, { ...params, p_school_year: application.school_year });
+  if (saved.error) return saved;
+  application.unit = params.p_unit;
+  const child = db.enrollment_children.find(row => row.id === application.child_id);
+  Object.assign(child, { full_name: params.p_child_name, birth_date: params.p_birth_date });
+  db.enrollment_form_details = db.enrollment_form_details.filter(row => row.application_id !== application.id);
+  db.enrollment_form_details.push({ application_id: application.id, details: params.p_details, photo: params.p_photo,
+    photo_saved: true, registration_date: params.p_registration_date, grade: params.p_grade, record_updated_at: now() });
+  save(db);
+  return saved;
+}
+
 export function createDemoClient() {
   return {
     demo: true,
@@ -180,8 +210,10 @@ export function createDemoClient() {
       if (name === 'save_current_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
       if (name === 'create_current_enrollment') return { async single() { return createFamilyEnrollment(read(), params); } };
       if (name === 'save_enrollment_form') return { async single() { return saveEnrollmentForm(read(), params); } };
+      if (name === 'save_family_enrollment_record') return { async single() { return saveFamilyEnrollmentRecord(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
       if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
+      if (name === 'edit_enrollment_record') return Promise.resolve().then(() => editEnrollmentRecord(read(), params));
       return Promise.resolve(failure('42883'));
     },
   };

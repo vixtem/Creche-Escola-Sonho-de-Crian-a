@@ -20,6 +20,7 @@
 .portal-enrollment-details { margin-top:14px; }
 .portal-enrollment-details h4 { margin:0 0 8px; }
 .portal-enrollment-details dd { white-space:pre-wrap; overflow-wrap:anywhere; }
+.portal-enrollment-photo { display:block; width:104px; height:auto; margin:12px 0; border-radius:8px; }
 .portal-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:16px; padding:5px; background:#e6f2f2; border:1px solid #cadfdf; border-radius:12px; }
 .portal-tabs button { min-height:44px; padding:8px; border-radius:8px; color:#234953; font-weight:700; }
 .portal-tabs button[aria-selected="true"] { background:#13685d; color:#fff; }

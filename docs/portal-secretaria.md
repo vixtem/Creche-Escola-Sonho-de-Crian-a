@@ -20,7 +20,7 @@ O site está no GitHub Pages. `public/enrollment-config.json` contém apenas a U
 
 ## Dados e acesso
 
-O envio online registra o nome e a data de nascimento da criança, a modalidade de estudo, a unidade, o ano letivo definido no servidor (2027), os dados do responsável e o histórico. O e-mail vem da conta confirmada da família. A família pode reabrir e atualizar a ficha de 2027. Sexo, endereço, CEP, bairro e foto 3×4 ficam no rascunho do mesmo navegador e podem ser incluídos no PDF da ficha.
+O envio online registra os dados preenchidos e a foto 3×4, quando fornecida. O ano letivo vem do servidor (2027) e o e-mail vem da conta confirmada da família. A Secretaria pode consultar, completar e corrigir a ficha e baixar o PDF completo. Dados antigos que só foram guardados no navegador passam ao cadastro quando a família volta a salvar a ficha com esses dados preenchidos.
 
 A secretaria acompanha o total de pré-matrículas em andamento, matrículas confirmadas e o total de solicitações. A idade do relatório é calculada na data da consulta. O resumo é agregado, e a lista nominal imprimível contém apenas nome, idade, turno e situação.
 

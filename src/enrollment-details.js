@@ -1,4 +1,6 @@
 const yesNo = ['Sim', 'Não'];
+export const imageConsentScope = 'A autorização vale para fotos e vídeos da criança no grupo dos pais e no Instagram da escola (@crecheescolasonhodecrianca2021).';
+export const enrollmentDeclaration = 'Confirmo que sou responsável pelas informações prestadas e estou ciente de que a matrícula será formalizada após a assinatura da ficha e de seus anexos ou termos aditivos.';
 const text = (name, label, extra = {}) => ({ name, label, limit: 120, optional: true, ...extra });
 const healthQuestion = (name, label, detailLabel = 'Qual?') => [
   text(name, label, { options: yesNo }),
@@ -73,6 +75,21 @@ export const enrollmentDetailsSections = [
 
 export const enrollmentAddressFields = [
   ['sex', 'Sexo'], ['address', 'Endereço completo'], ['cep', 'CEP'], ['district', 'Bairro'],
+];
+
+export const staffEnrollmentSections = [
+  { title: 'Dados da criança', fields: [
+    text('sex', 'Sexo', { options: ['Feminino', 'Masculino', 'Prefiro não informar'] }),
+    text('address', 'Endereço completo', { limit: 180, wide: true }),
+    text('cep', 'CEP', { limit: 9 }),
+    text('district', 'Bairro', { limit: 80 }),
+  ] },
+  ...enrollmentDetailsSections,
+  { title: 'Formalização da matrícula', fields: [
+    text('registration_date', 'Data da matrícula', { type: 'date' }),
+    text('grade', 'Série ou turma', { limit: 80 }),
+    text('declarationAccepted', 'Ciência da declaração registrada', { options: yesNo }),
+  ] },
 ];
 
 export function visibleEnrollmentFields(fields, values) {
