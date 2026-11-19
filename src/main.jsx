@@ -50,17 +50,16 @@ const bannerNames = [...banners.map(({name}) => name), 'Pré-matrícula'];
 
 function HeroCarousel() {
   const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [linkFocused, setLinkFocused] = useState(false);
   const showEnrollment = active === banners.length;
   const banner = banners[active] ?? banners[0];
 
   useEffect(() => {
-    if (paused || focused || hovered) return;
+    if (paused || linkFocused) return;
     const timer = window.setTimeout(() => setActive((active + 1) % bannerNames.length), 7000);
     return () => window.clearTimeout(timer);
-  }, [active, paused, focused, hovered]);
+  }, [active, paused, linkFocused]);
 
   return (
     <section
@@ -68,10 +67,8 @@ function HeroCarousel() {
       className={`hero section-wrap${showEnrollment ? ' hero-show-enrollment' : ''}`}
       aria-label="Destaques da escola"
       aria-roledescription="carrossel"
-      onFocus={() => setFocused(true)}
-      onBlur={event => setFocused(event.currentTarget.contains(event.relatedTarget))}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onFocus={event => setLinkFocused(event.target instanceof HTMLAnchorElement)}
+      onBlur={() => setLinkFocused(false)}
     >
       {showEnrollment && (
         <a className="hero-enrollment" href="./portal.html">
