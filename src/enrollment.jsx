@@ -58,7 +58,7 @@ function Field({ field, values, update }) {
 
   return (
     <div className={`enrollment-field${wide ? ' enrollment-wide' : ''}`}>
-      <label htmlFor={id}>{label} {optional && <span>(opcional)</span>}</label>
+      <label htmlFor={id}>{label}</label>
       {options ? (
         <select {...props}>
           <option value="" disabled>Selecione</option>
@@ -84,7 +84,7 @@ function PhotoField({ photo, error, loading, onChange }) {
   return (
     <div className="enrollment-field enrollment-wide enrollment-photo">
       <div>
-        <label htmlFor="enrollment-photo">Foto 3×4 da criança <span>(opcional)</span></label>
+        <label htmlFor="enrollment-photo">Foto 3×4 da criança</label>
         <input id="enrollment-photo" type="file" accept="image/jpeg,image/png,image/webp"
           aria-describedby="enrollment-photo-help" onChange={event => onChange(event.currentTarget)} />
         <p id="enrollment-photo-help">JPG, PNG ou WebP, até 12 MB. Escolha uma foto com o rosto centralizado.</p>
