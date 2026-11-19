@@ -202,9 +202,7 @@ function Enrollment() {
       <div className="enrollment-shell">
         <a href="./" className="enrollment-back"><ArrowLeft size={18} /> Voltar ao site da escola</a>
         <div className="enrollment-intro">
-          <svg className="enrollment-logo" viewBox="400 65 740 510" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-            <image href={`${import.meta.env.BASE_URL}images/marca.webp`} width="1536" height="1024" />
-          </svg>
+          <img className="enrollment-logo" src={`${import.meta.env.BASE_URL}images/marca-cesc.png`} width="600" height="365" alt="" />
           <p className="enrollment-school">{school.fullName}</p>
           <h1>Ficha de pré-matrícula</h1>
           <p>Educação Infantil · {school.ageRange}</p>

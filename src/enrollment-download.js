@@ -9,7 +9,7 @@ async function loadAsset(url) {
 }
 
 export async function downloadEnrollmentPdf(answers, photo) {
-  const brandUrl = `${import.meta.env.BASE_URL}images/marca-ficha.png`;
+  const brandUrl = `${import.meta.env.BASE_URL}images/marca-cesc.png`;
   const [regular, bold, brand] = await Promise.all([
     loadAsset(regularUrl),
     loadAsset(boldUrl),

@@ -8,7 +8,11 @@ const asset = (name) => `${import.meta.env.BASE_URL}images/${name}`;
 const links = [['Vivências', 'vivencias']];
 
 function Brand({ footer = false }) {
-  return <a className={`brand ${footer ? 'brand-footer' : ''}`} href="#inicio" aria-label="Sonho de Criança — início"><span className="brand-symbol"><svg viewBox="400 65 740 510" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><image href={asset('marca.webp')} width="1536" height="1024" /></svg></span><span><small>CRECHE ESCOLA</small><strong>Sonho de Criança<span className="brand-dot">.</span></strong></span></a>;
+  return (
+    <a className={`brand ${footer ? 'brand-footer' : ''}`} href="#inicio" aria-label="Creche Escola Sonho de Criança — início">
+      <img src={asset('marca-cesc.png')} width="600" height="365" alt="" />
+    </a>
+  );
 }
 // Recortes no espaço original da imagem: mantém a proporção em qualquer tela.
 const sceneFrames = [
@@ -16,7 +20,7 @@ const sceneFrames = [
   [5, 552, 503, 464], [519, 552, 503, 464], [1033, 552, 497, 464],
 ];
 function Scene({ index, className = '', label }) {
-  return <div className={`scene scene-${index} ${className}`} role="img" aria-label={label}><svg viewBox={sceneFrames[index].join(' ')} preserveAspectRatio="xMidYMid slice" aria-hidden="true"><image href={asset('infancia.webp')} width="1536" height="1024" /></svg></div>;
+  return <div className={`scene scene-${index} ${className}`} role="img" aria-label={label}><svg viewBox={sceneFrames[index].join(' ')} preserveAspectRatio="xMidYMid slice" aria-hidden="true"><image href={asset('infancia-cesc.webp')} width="1536" height="1024" /></svg></div>;
 }
 function Flower({ className = '' }) {
   return <svg className={className} viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M50 28C20-10-10 23 28 50-10 78 23 110 50 72c28 38 60 5 22-22 38-28 5-60-22-22Z" fill="currentColor"/><circle cx="50" cy="50" r="13" fill="#fff9eb"/><path d="M44 49h1m11 0h1m-12 7q6 6 12 0" stroke="#102a67" strokeWidth="3" strokeLinecap="round"/></svg>;

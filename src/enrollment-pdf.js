@@ -110,10 +110,10 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     draw('Ficha de pré-matrícula', margin + 12, headerY + 21, 17.5, bold, white);
     const brandX = margin + titleWidth + 11;
     if (logo) {
-      const dimensions = logo.scaleToFit(41, 35);
+      const dimensions = logo.scaleToFit(68, 42);
       page.drawImage(logo, { x: brandX, y: headerY + (headerHeight - dimensions.height) / 2, ...dimensions });
     }
-    const textX = logo ? brandX + 50 : brandX;
+    const textX = logo ? brandX + 76 : brandX;
     draw(school.fullName, textX, headerY + 32, 12, bold, navy);
     draw(`Educação Infantil · ${school.ageRange}`, textX, headerY + 15, 10.5, regular, muted);
     if (sample) draw('MODELO PREENCHIDO · DADOS FICTÍCIOS', margin, headerY - 12, 9, bold, muted);
