@@ -12,6 +12,10 @@ import './portal.css';
 const staffMode = new URLSearchParams(window.location.search).get('area') === 'secretaria';
 const demoAccessKey = `cesc-portal-demo-access-${staffMode ? 'staff' : 'family'}`;
 const schedules = sections[1].fields[0].options;
+const secretariatTabs = [
+  { id: 'reports', label: 'Informações e relatórios' },
+  { id: 'students', label: 'Alunos' },
+];
 const historyFields = 'id, status, family_message, changed_at';
 const today = dateInSchool();
 
@@ -184,6 +188,7 @@ function Decision({ client, item, onSaved }) {
 }
 
 function Secretariat({ client }) {
+  const [tab, setTab] = useState(0);
   const [records, setRecords] = useState([]);
   const [years, setYears] = useState([]);
   const [year, setYear] = useState(currentSchoolYear);
@@ -233,9 +238,24 @@ function Secretariat({ client }) {
     requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   }
 
-  return <>
+  function changeTabWithKeyboard(event, index) {
+    const destinations = { ArrowRight: 1 - index, ArrowLeft: 1 - index, Home: 0, End: 1 };
+    const next = destinations[event.key];
+    if (typeof next !== 'number') return;
+    event.preventDefault();
+    setTab(next);
+    event.currentTarget.parentElement.children[next].focus();
+  }
+
+  return <div className={`portal-print--${report}`}>
+    <div className="portal-tabs portal-screen" role="tablist" aria-label="Áreas da Secretaria">
+      {secretariatTabs.map(({ id, label }, index) => <button key={id} type="button" role="tab"
+        id={`staff-tab-${id}`} aria-controls={`staff-panel-${id}`} aria-selected={tab === index}
+        tabIndex={tab === index ? 0 : -1} onClick={() => setTab(index)}
+        onKeyDown={event => changeTabWithKeyboard(event, index)}>{label}</button>)}
+    </div>
     <section className="portal-card portal-screen">
-      <h2>Solicitações e relatórios</h2>
+      <h2>Filtros de matrículas</h2>
       <div className="portal-filters">
         <div className="enrollment-field"><label htmlFor="filter-year">Ano letivo</label>
           <select id="filter-year" value={year} onChange={e => { setYear(Number(e.target.value)); setAge(''); setVisibleId(null); }}>
@@ -255,41 +275,52 @@ function Secretariat({ client }) {
           </select></div>
       </div>
       <div className="portal-actions">
-        <button className="button" disabled={loading || Boolean(error)} onClick={() => print('summary')}><Printer size={17} /> Imprimir resumo</button>
-        <button className="button" disabled={loading || Boolean(error)} onClick={() => print('list')}><Printer size={17} /> Imprimir lista nominal</button>
         <button className="text-link" onClick={() => setRefresh(value => value + 1)}>Atualizar</button>
       </div>
       <p role="status">{error || (loading ? 'Carregando solicitações…' : '')}</p>
     </section>
-    {!loading && !error && <section className={`portal-report portal-report--${report}`}>
+    <section className="portal-report portal-tab-panel" role="tabpanel" id="staff-panel-reports"
+      aria-labelledby="staff-tab-reports" data-active={tab === 0} tabIndex={0}>
       <div className="portal-report-title">
         <h2>{school.name} · Relatório de matrículas</h2>
         <p>Ano letivo {year} · {states[status] || 'Todas as situações'} · {schedule || 'Todos os turnos'} · {age === '' ? 'Todas as idades' : `${age} anos`}</p>
         <p>Idades calculadas em {formatDate(referenceDate)}.</p>
       </div>
-      <div className="portal-metrics">
-        <div><strong>{active}</strong>Pré-matrículas em andamento</div>
-        <div><strong>{enrolled}</strong>Matrículas confirmadas</div>
-        <div><strong>{filtered.length}</strong>Total de solicitações no filtro</div>
+      <div className="portal-actions portal-screen">
+        <button className="button" disabled={loading || Boolean(error)} onClick={() => print('summary')}><Printer size={17} /> Imprimir resumo</button>
+        <button className="button" disabled={loading || Boolean(error)} onClick={() => print('list')}><Printer size={17} /> Imprimir lista nominal</button>
       </div>
-      <div className="portal-breakdown">
-        <section><h3>Por situação</h3><dl>{Object.entries(states).map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{byStatus[key]}</dd></div>)}</dl></section>
-        <section><h3>Por turno</h3><dl>{schedules.map(value => <div key={value}><dt>{value}</dt><dd>{bySchedule[value]}</dd></div>)}</dl></section>
-        <section><h3>Por idade</h3><dl>{ages.map(value => <div key={value}><dt>{value} anos</dt><dd>{byAge[value]}</dd></div>)}</dl></section>
-      </div>
-      <div className="portal-table-wrap">{filtered.length ? <table>
-        <caption>Solicitações no filtro</caption>
-        <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th></tr></thead>
-        <tbody>{filtered.map(item => <tr key={item.id}><td>{item.child_name}</td><td>{item.age ?? '—'}</td><td>{item.schedule}</td>
-          <td>{states[item.status]}</td><td className="portal-screen"><button type="button" className="text-link"
-            aria-expanded={visibleId === item.id} aria-label={`Ficha de ${item.child_name}`}
-            onClick={() => setVisibleId(visibleId === item.id ? null : item.id)}>{visibleId === item.id ? 'Fechar' : 'Abrir'}</button></td></tr>)}</tbody>
-      </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
-      {showing && <aside className="portal-card portal-screen">
-        <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={() => setRefresh(value => value + 1)} />
-      </aside>}
-    </section>}
-  </>;
+      {!loading && !error && <>
+        <div className="portal-metrics">
+          <div><strong>{active}</strong>Pré-matrículas em andamento</div>
+          <div><strong>{enrolled}</strong>Matrículas confirmadas</div>
+          <div><strong>{filtered.length}</strong>Total de solicitações no filtro</div>
+        </div>
+        <div className="portal-breakdown">
+          <section><h3>Por situação</h3><dl>{Object.entries(states).map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{byStatus[key]}</dd></div>)}</dl></section>
+          <section><h3>Por turno</h3><dl>{schedules.map(value => <div key={value}><dt>{value}</dt><dd>{bySchedule[value]}</dd></div>)}</dl></section>
+          <section><h3>Por idade</h3><dl>{ages.map(value => <div key={value}><dt>{value} anos</dt><dd>{byAge[value]}</dd></div>)}</dl></section>
+        </div>
+      </>}
+    </section>
+    <section className="portal-card portal-tab-panel portal-students-panel" role="tabpanel" id="staff-panel-students"
+      aria-labelledby="staff-tab-students" data-active={tab === 1} tabIndex={0}>
+      <h2 className="portal-screen">Alunos</h2>
+      {!loading && !error && <>
+        <div className="portal-table-wrap">{filtered.length ? <table>
+          <caption>Solicitações no filtro</caption>
+          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th></tr></thead>
+          <tbody>{filtered.map(item => <tr key={item.id}><td>{item.child_name}</td><td>{item.age ?? '—'}</td><td>{item.schedule}</td>
+            <td>{states[item.status]}</td><td className="portal-screen"><button type="button" className="text-link"
+              aria-expanded={visibleId === item.id} aria-label={`Ficha de ${item.child_name}`}
+              onClick={() => setVisibleId(visibleId === item.id ? null : item.id)}>{visibleId === item.id ? 'Fechar' : 'Abrir'}</button></td></tr>)}</tbody>
+        </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
+        {showing && <aside className="portal-card portal-screen">
+          <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={() => setRefresh(value => value + 1)} />
+        </aside>}
+      </>}
+    </section>
+  </div>;
 }
 
 function Portal() {
