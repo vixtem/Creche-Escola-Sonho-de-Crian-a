@@ -19,12 +19,17 @@ function seed() {
     enrollment_children: [child],
     enrollment_applications: [application],
     enrollment_history: [{ id: 1, application_id: application.id, status: 'received', family_message: '', changed_at: now() }],
+    enrollment_form_details: [],
   };
 }
 
 function read() {
   const stored = sessionStorage.getItem(key);
-  if (stored) return JSON.parse(stored);
+  if (stored) {
+    const db = JSON.parse(stored);
+    db.enrollment_form_details ??= [];
+    return db;
+  }
   const db = seed();
   save(db);
   return db;
@@ -155,6 +160,17 @@ function createFamilyEnrollment(db, params) {
   return error ? { data, error } : result({ ...data, child_id });
 }
 
+function saveEnrollmentForm(db, params) {
+  const application = db.enrollment_applications.find(row => row.child_id === params.p_child && row.school_year === enrollmentYear);
+  if (application?.status !== 'documents') return failure('40001');
+  const saved = saveFamilyEnrollment(db, params);
+  if (saved.error) return saved;
+  db.enrollment_form_details = db.enrollment_form_details.filter(row => row.application_id !== application.id);
+  db.enrollment_form_details.push({ application_id: application.id, details: params.p_details, submitted_at: now() });
+  save(db);
+  return saved;
+}
+
 export function createDemoClient() {
   return {
     demo: true,
@@ -163,6 +179,7 @@ export function createDemoClient() {
     rpc(name, params) {
       if (name === 'save_current_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
       if (name === 'create_current_enrollment') return { async single() { return createFamilyEnrollment(read(), params); } };
+      if (name === 'save_enrollment_form') return { async single() { return saveEnrollmentForm(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
       if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
       return Promise.resolve(failure('42883'));

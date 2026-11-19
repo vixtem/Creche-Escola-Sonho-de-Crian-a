@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
 import { sections, ageOnDate, enrollmentYear } from './enrollment-fields';
+import { enrollmentAddressFields, enrollmentDetailsSections, visibleEnrollmentFields } from './enrollment-details';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
 import { allRows, dateInSchool, getPortalClient } from './portal-api';
 import './styles.css';
@@ -47,7 +48,7 @@ function writeDraft(portal, fields, photo) {
 }
 
 function Field({ field, values, update }) {
-  const { name, label, options, type = 'text', limit, optional, wide, autoComplete, readOnly } = field;
+  const { name, label, options, type = 'text', limit, optional, wide, autoComplete, readOnly, min, max } = field;
   const value = values[name] || '';
   const id = `enrollment-${name}`;
   const props = {
@@ -66,9 +67,11 @@ function Field({ field, values, update }) {
         </select>
       ) : type === 'age' ? (
         <output id={id} htmlFor="enrollment-birth">{values.age || 'Calculada pela data de nascimento'}</output>
+      ) : type === 'textarea' ? (
+        <textarea {...props} rows={3} />
       ) : (
-        <input {...props} type={type} min={type === 'date' ? '1900-01-01' : undefined}
-          max={type === 'date' ? dateInSchool() : undefined}
+        <input {...props} type={type} min={type === 'date' ? '1900-01-01' : min}
+          max={type === 'date' ? dateInSchool() : max}
           pattern={name === 'cep' ? '[0-9]{5}(?:-| )?[0-9]{3}' : undefined}
           inputMode={name === 'cep' ? 'numeric' : undefined}
           placeholder={name === 'cep' ? '00000-000' : undefined} />
@@ -120,10 +123,12 @@ function Enrollment() {
 
   function openApplication(context) {
     const item = context.application;
+    const details = context.enrollmentDetails ?? {};
     const saved = readDraft(context);
     const revisionMatches = saved.revision === draftRevision(context);
     const restored = Object.fromEntries(formFields
-      .filter(({ name }) => typeof saved.fields?.[name] === 'string' && (revisionMatches || !onlineFields.includes(name)))
+      .filter(({ name }) => typeof saved.fields?.[name] === 'string'
+        && (revisionMatches || (!onlineFields.includes(name) && !Object.hasOwn(details, name))))
       .map(({ name }) => [name, saved.fields[name]]));
     setDraft(restored);
     setPhoto(saved.photo || null);
@@ -133,6 +138,8 @@ function Enrollment() {
       email: context.user.email,
       schedule: item?.schedule ?? '', guardian: item?.guardian_name ?? '',
       relationship: item?.guardian_relationship ?? '', phone: item?.guardian_phone ?? '', unit: item?.unit ?? '',
+      consentName: item?.guardian_name ?? '',
+      ...details,
       ...restored,
     });
     setSent(null);
@@ -168,8 +175,15 @@ function Enrollment() {
       ]);
       if (error || applicationError || !child) throw new Error();
       const progress = await readEnrollmentProgress(client, application);
+      let enrollmentDetails;
+      if (progress.schoolPdf) {
+        const { data, error } = await client.from('enrollment_form_details').select('details')
+          .eq('application_id', application.id).maybeSingle();
+        if (error) throw error;
+        enrollmentDetails = data?.details;
+      }
       if (!active) return;
-      const context = { client, child, application, progress, user: session.user, notice: '' };
+      const context = { client, child, application, progress, enrollmentDetails, user: session.user, notice: '' };
       openApplication(context);
       setPortal(context);
     }).catch(() => {
@@ -210,7 +224,7 @@ function Enrollment() {
 
   function update(name, value) {
     setValues(current => ({ ...current, [name]: value }));
-    setDraft(current => ({ ...current, [name]: value }));
+    if (formFields.some(field => field.name === name)) setDraft(current => ({ ...current, [name]: value }));
     setStatus('');
     setSent(null);
   }
@@ -256,7 +270,8 @@ function Enrollment() {
   async function send(event, profileOnly = false) {
     const form = event.currentTarget.form;
     if (sending) return;
-    const fields = profileOnly ? formFields.filter(({ name }) => name === 'child' || name === 'birth') : formFields;
+    const extraFields = isEnrollment ? enrollmentDetailsSections.flatMap(section => visibleEnrollmentFields(section.fields, values)) : [];
+    const fields = profileOnly ? formFields.filter(({ name }) => name === 'child' || name === 'birth') : [...formFields, ...extraFields];
     for (const { name, optional } of fields) {
       const field = form.elements.namedItem(name);
       if (!field.reportValidity()) return;
@@ -267,6 +282,11 @@ function Enrollment() {
         return;
       }
     }
+    if (isEnrollment && values.imageConsent === 'Sim' && !/^\d{11}$/.test(values.consentCpf?.replace(/\D/g, ''))) {
+      setSendError('Informe o CPF de quem autoriza o uso de imagem, com 11 dígitos.');
+      return;
+    }
+    if (isEnrollment && !form.elements.namedItem('declarationAccepted').reportValidity()) return;
     if (!profileOnly && (!/^\+?[0-9 ()-]+$/.test(values.phone.trim()) || !/^\d{10,13}$/.test(values.phone.replace(/\D/g, '')))) {
       const phone = form.elements.namedItem('phone');
       phone.setCustomValidity('Informe um telefone válido com DDD.');
@@ -293,8 +313,12 @@ function Enrollment() {
         p_guardian_name: values.guardian.trim(), p_relationship: values.relationship.trim(),
         p_phone: values.phone.trim(),
       };
-      const request = portal.child ? portal.client.rpc('save_current_enrollment', {
+      const details = isEnrollment ? Object.fromEntries([
+        ...enrollmentAddressFields.map(([name]) => name), ...extraFields.map(({ name }) => name), 'declarationAccepted',
+      ].filter(name => values[name]?.trim()).map(name => [name, values[name].trim()])) : null;
+      const request = portal.child ? portal.client.rpc(isEnrollment ? 'save_enrollment_form' : 'save_current_enrollment', {
         ...payload, p_child: portal.child.id, p_expected_updated_at: application?.updated_at ?? application?.created_at ?? null,
+        ...(details ? { p_details: details } : {}),
       }) : portal.client.rpc('create_current_enrollment', payload);
       const { data, error } = await request.single();
       if (error || !data) throw error;
@@ -303,8 +327,8 @@ function Enrollment() {
         guardian_relationship: values.relationship.trim(), guardian_phone: values.phone.trim() };
       const updateProfile = !application || application.child_name !== saved.child_name || application.birth_date !== saved.birth_date;
       const child = updateProfile ? { id: portal.child?.id ?? data.child_id, full_name: saved.child_name, birth_date: saved.birth_date } : portal.child;
-      const nextPortal = { ...portal, child, application: saved };
-      const remainingDraft = Object.fromEntries(Object.entries(draft).filter(([name]) => !onlineFields.includes(name)));
+      const nextPortal = { ...portal, child, application: saved, enrollmentDetails: details ?? portal.enrollmentDetails };
+      const remainingDraft = details ? {} : Object.fromEntries(Object.entries(draft).filter(([name]) => !onlineFields.includes(name)));
       if (!portal.child) {
         try {
           writeDraft(nextPortal, remainingDraft, photo);
@@ -324,7 +348,7 @@ function Enrollment() {
     } catch (error) {
       setSendError(error?.code === '40001' ? 'Esta ficha foi atualizada desde que você abriu a página. Recarregue a ficha para conferir os dados atuais.'
         : error?.code === '23505' ? 'Já existe uma criança com esse nome e data de nascimento. Abra a ficha dessa criança pelo Portal da Família.'
-        : 'Não foi possível salvar a pré-matrícula. Confira os dados e tente novamente.');
+        : 'Não foi possível salvar a ficha. Confira os dados e tente novamente.');
     } finally {
       setSending(false);
     }
@@ -343,7 +367,7 @@ function Enrollment() {
           <span>{portal.client?.demo
             ? 'Modo de teste. Use apenas dados fictícios. A pré-matrícula de teste fica nesta aba e não é enviada à escola.'
             : schoolPdf
-            ? 'O PDF é de responsabilidade da escola. Sexo, endereço e foto ficam no rascunho deste navegador.'
+            ? 'O PDF é de responsabilidade da escola. A foto fica no rascunho deste navegador.'
             : portal.user
             ? 'Sexo, endereço e foto ficam no rascunho deste navegador e podem ser incluídos no PDF.'
             : 'Entre no Portal da Família e abra a ficha pelo cadastro da criança.'}</span>
@@ -367,9 +391,27 @@ function Enrollment() {
               </div>
             </fieldset>
           ))}
+          {isEnrollment && enrollmentDetailsSections.map(({ title, fields }) => <fieldset key={title} className="enrollment-section" disabled={sending}>
+            <legend>{title}</legend>
+            {title === 'Autorização de uso de imagem' && <p>
+              A autorização vale para fotos e vídeos da criança no grupo dos pais e no Instagram da escola (@crecheescolasonhodecrianca2021).
+            </p>}
+            <div className="enrollment-grid">
+              {visibleEnrollmentFields(fields, values).map(field => <Field key={field.name} field={field} values={answers} update={update} />)}
+            </div>
+          </fieldset>)}
+          {isEnrollment && <fieldset className="enrollment-section" disabled={sending}>
+            <legend>Declaração do responsável</legend>
+            <label className="enrollment-declaration">
+              <input type="checkbox" name="declarationAccepted" required checked={values.declarationAccepted === 'Sim'}
+                onChange={event => update('declarationAccepted', event.target.checked ? 'Sim' : '')} />
+              <span>Confirmo que sou responsável pelas informações prestadas e estou ciente de que a matrícula será formalizada após a assinatura da ficha e de seus anexos ou termos aditivos.</span>
+            </label>
+          </fieldset>}
           <fieldset className="enrollment-section enrollment-submit">
             <legend>{isEnrollment ? 'Dados da matrícula' : application ? 'Atualizar pré-matrícula' : 'Enviar à secretaria'}</legend>
-            <p>A secretaria recebe nome e nascimento da criança, modalidade, unidade e dados do responsável.</p>
+            <p>{isEnrollment ? 'A Secretaria recebe os dados da ficha para conferência.'
+              : 'A secretaria recebe nome e nascimento da criança, modalidade, unidade e dados do responsável.'}</p>
             <button className="button" type="button" disabled={sending || photoLoading} onClick={send}>
               {sending ? 'Salvando…' : isEnrollment ? 'Salvar dados da matrícula' : application ? 'Salvar alterações' : 'Enviar pré-matrícula'}
             </button>

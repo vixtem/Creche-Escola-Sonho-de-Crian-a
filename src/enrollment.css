@@ -58,6 +58,8 @@
 }
 
 .enrollment-privacy svg { flex: none; margin-top: 2px; }
+.enrollment-declaration { display:flex; align-items:flex-start; gap:10px; line-height:1.5; }
+.enrollment-declaration input { flex:none; margin-top:4px; }
 
 .enrollment-section {
   min-width: 0;

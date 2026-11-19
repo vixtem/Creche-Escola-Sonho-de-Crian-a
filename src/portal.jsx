@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LogOut, Printer } from 'lucide-react';
 import { ageOnDate, enrollmentYear, schoolUnits, studyModes } from './enrollment-fields';
+import { enrollmentAddressFields, enrollmentDetailsSections, visibleEnrollmentFields } from './enrollment-details';
 import { allRows, dateInSchool, formatDate, getPortalClient, states, transitions } from './portal-api';
 import { school } from './school';
 import { PortalLogin } from './portal-login';
@@ -128,6 +129,50 @@ function Family({ client, user }) {
   </>;
 }
 
+function SchoolEnrollmentDetails({ client, applicationId }) {
+  const [record, setRecord] = useState(undefined);
+  const [error, setError] = useState('');
+  const loading = useRef(false);
+
+  async function read(event) {
+    if (!event.currentTarget.open || record !== undefined || loading.current) return;
+    loading.current = true;
+    setError('');
+    try {
+      const { data, error } = await client.from('enrollment_form_details').select('details, submitted_at')
+        .eq('application_id', applicationId).maybeSingle();
+      if (error) throw error;
+      setRecord(data);
+    } catch {
+      setError('Não foi possível carregar a ficha. Feche e abra novamente para tentar.');
+    } finally {
+      loading.current = false;
+    }
+  }
+
+  const groups = record && [
+    { title: 'Dados da criança', fields: enrollmentAddressFields.map(([name, label]) => ({ name, label })) },
+    ...enrollmentDetailsSections,
+    { title: 'Declaração do responsável', fields: [{ name: 'declarationAccepted', label: 'Ciência confirmada' }] },
+  ];
+
+  return <details className="portal-history" onToggle={read}>
+    <summary>Dados da ficha de matrícula</summary>
+    <p role="status">{error || (record === undefined ? 'Carregando ficha…' : record === null ? 'Ficha de matrícula ainda não enviada.' : '')}</p>
+    {record && <p>Dados enviados em {formatDate(record.submitted_at)}.</p>}
+    {groups?.map(({ title, fields }) => {
+      const filled = visibleEnrollmentFields(fields, record.details).filter(({ name }) => record.details[name]);
+      if (!filled.length) return null;
+      return <section className="portal-enrollment-details" key={title}>
+        <h4>{title}</h4>
+        <dl className="portal-family-request-details">
+          {filled.map(({ name, label }) => <div key={name}><dt>{label}</dt><dd>{record.details[name]}</dd></div>)}
+        </dl>
+      </section>;
+    })}
+  </details>;
+}
+
 function Decision({ client, item, onSaved }) {
   const [next, setNext] = useState('');
   const [busy, setBusy] = useState(false);
@@ -163,6 +208,7 @@ function Decision({ client, item, onSaved }) {
     <p><strong>Responsável:</strong> {item.guardian_name} ({item.guardian_relationship}) · {item.guardian_phone} · {item.guardian_email}</p>
     <p><strong>Protocolo:</strong> <code>{item.protocol}</code></p>
     <History client={client} item={item} />
+    <SchoolEnrollmentDetails client={client} applicationId={item.id} />
     {options.length > 0 && <form onSubmit={submit}>
       <div className="enrollment-grid portal-decision-fields">
         <div className="enrollment-field">
