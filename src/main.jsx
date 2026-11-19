@@ -46,14 +46,14 @@ const banners = [
   },
 
 ];
-const bannerNames = [...banners.map(({name}) => name), 'Pré-matrícula'];
+const bannerNames = ['Pré-matrícula', ...banners.map(({name}) => name)];
 
 function HeroCarousel() {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const [linkFocused, setLinkFocused] = useState(false);
-  const showEnrollment = active === banners.length;
-  const banner = banners[active] ?? banners[0];
+  const showEnrollment = active === 0;
+  const banner = banners[active - 1] ?? banners[0];
 
   useEffect(() => {
     if (paused || linkFocused) return;
@@ -87,7 +87,7 @@ function HeroCarousel() {
                 role="group"
                 aria-roledescription="banner"
                 aria-label={name}
-                inert={index !== active}
+                inert={index + 1 !== active}
               >
                 <span className="eyebrow"><span className="little-line" />{eyebrow}</span>
                 <Heading className="hero-slide-heading">
@@ -119,7 +119,7 @@ function HeroCarousel() {
       </div>
       <div className="hero-visual">
         <div className="photo-outline" />
-        <img className="hero-photo" src={asset(banner.image)} width="360" height="640" fetchPriority={active === 0 ? 'high' : 'auto'} alt={banner.alt} />
+        <img className="hero-photo" src={asset(banner.image)} width="360" height="640" fetchPriority={active === 1 ? 'high' : 'auto'} alt={banner.alt} />
         <span className="photo-tag"><span className="tag-sun" aria-hidden="true">✳</span> Ser criança é uma descoberta diária.</span>
         <div className="round-stamp"><span>BRINCAR É</span><Heart fill="currentColor" size={26} aria-hidden="true" /><span>COISA SÉRIA</span></div>
         <Flower className="hero-flower" />
