@@ -12,6 +12,7 @@ import './portal.css';
 const staffMode = new URLSearchParams(window.location.search).get('area') === 'secretaria';
 const demoAccessKey = `cesc-portal-demo-access-${staffMode ? 'staff' : 'family'}`;
 const schedules = Object.keys(studyModes);
+const reportUnits = { ...schoolUnits, unspecified: 'Não informada' };
 const secretariatTabs = [
   { id: 'reports', label: 'Informações e relatórios' },
   { id: 'students', label: 'Alunos' },
@@ -270,6 +271,7 @@ function Secretariat({ client }) {
   const [year, setYear] = useState(enrollmentYear);
   const [status, setStatus] = useState('');
   const [schedule, setSchedule] = useState('');
+  const [unit, setUnit] = useState('');
   const [age, setAge] = useState('');
   const [sheet, setSheet] = useState(null);
   const [notice, setNotice] = useState('');
@@ -306,13 +308,15 @@ function Secretariat({ client }) {
   const items = records.map(item => ({ ...item, age: ageOnDate(item.birth_date, referenceDate) }));
   const ages = [...new Set(items.map(item => item.age).filter(value => value !== null))].sort((a,b) => a-b);
   const filtered = items.filter(item => (!status || item.status === status)
-    && (!schedule || item.schedule === schedule) && (age === '' || item.age === Number(age)));
+    && (!schedule || item.schedule === schedule)
+    && (!unit || (item.unit ?? 'unspecified') === unit) && (age === '' || item.age === Number(age)));
   const screenRows = [...filtered].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const enrolled = filtered.filter(item => item.status === 'enrolled').length;
   const active = filtered.filter(item => !['enrolled','declined'].includes(item.status)).length;
   const counts = (keys, keyFor) => Object.fromEntries(keys.map(key => [key, filtered.filter(item => keyFor(item) === key).length]));
   const byStatus = counts(Object.keys(states), item => item.status);
   const bySchedule = counts(schedules, item => item.schedule);
+  const byUnit = counts(Object.keys(reportUnits), item => item.unit ?? 'unspecified');
   const byAge = counts(ages, item => item.age);
   const showing = items.find(item => item.id === sheet?.id);
 
@@ -336,7 +340,7 @@ function Secretariat({ client }) {
       <td>{showDecision ? <button type="button" className="portal-student-name"
         aria-expanded={sheet?.id === item.id && sheet.mode === 'view'}
         onClick={() => openSheet(item, 'view')}>{item.child_name}</button> : item.child_name}</td>
-      <td>{item.age ?? '—'}</td><td>{studyModes[item.schedule]}</td><td>{states[item.status]}</td>
+      <td>{item.age ?? '—'}</td><td>{studyModes[item.schedule]}</td><td>{schoolUnits[item.unit] || reportUnits.unspecified}</td><td>{states[item.status]}</td>
       {showDecision && <td><button type="button" className="text-link"
         aria-expanded={sheet?.id === item.id && sheet.mode === 'edit'} aria-label={`Editar ficha de ${item.child_name}`}
         onClick={() => openSheet(item, 'edit')}>Editar</button></td>}
@@ -379,6 +383,10 @@ function Secretariat({ client }) {
           <select id="filter-schedule" value={schedule} onChange={e => setSchedule(e.target.value)}>
             <option value="">Todos</option>{schedules.map(value => <option key={value} value={value}>{studyModes[value]}</option>)}
           </select></div>
+        <div className="enrollment-field"><label htmlFor="filter-unit">Unidade</label>
+          <select id="filter-unit" value={unit} onChange={e => setUnit(e.target.value)}>
+            <option value="">Todas</option>{Object.entries(reportUnits).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select></div>
         <div className="enrollment-field"><label htmlFor="filter-age">Idade</label>
           <select id="filter-age" value={age} onChange={e => setAge(e.target.value)}>
             <option value="">Todas</option>{ages.map(value => <option key={value} value={value}>{value} anos</option>)}
@@ -393,7 +401,7 @@ function Secretariat({ client }) {
       aria-labelledby="staff-tab-reports" data-active={tab === 0} tabIndex={0}>
       <div className="portal-report-title">
         <h2>{school.name} · Relatório de matrículas</h2>
-        <p>Ano letivo {year} · {states[status] || 'Todas as situações'} · {studyModes[schedule] || 'Todos os turnos'} · {age === '' ? 'Todas as idades' : `${age} anos`}</p>
+        <p>Ano letivo {year} · {states[status] || 'Todas as situações'} · {studyModes[schedule] || 'Todos os turnos'} · {reportUnits[unit] || 'Todas as unidades'} · {age === '' ? 'Todas as idades' : `${age} anos`}</p>
         <p>Idades calculadas em {formatDate(referenceDate)}.</p>
       </div>
       <div className="portal-actions portal-screen">
@@ -409,6 +417,7 @@ function Secretariat({ client }) {
         <div className="portal-breakdown">
           <section><h3>Por situação</h3><dl>{Object.entries(states).map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{byStatus[key]}</dd></div>)}</dl></section>
           <section><h3>Por turno</h3><dl>{schedules.map(value => <div key={value}><dt>{studyModes[value]}</dt><dd>{bySchedule[value]}</dd></div>)}</dl></section>
+          <section><h3>Por unidade</h3><dl>{Object.entries(reportUnits).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{byUnit[key]}</dd></div>)}</dl></section>
           <section><h3>Por idade</h3><dl>{ages.map(value => <div key={value}><dt>{value} anos</dt><dd>{byAge[value]}</dd></div>)}</dl></section>
         </div>
       </>}
@@ -420,7 +429,7 @@ function Secretariat({ client }) {
       {!loading && !error && <>
         <div className="portal-table-wrap">{filtered.length ? <table>
           <caption>Solicitações no filtro</caption>
-          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th></tr></thead>
+          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Unidade</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th></tr></thead>
           <tbody className="portal-screen">{renderStudentRows(screenRows, true)}</tbody>
           <tbody className="portal-print-rows">{renderStudentRows(filtered, false)}</tbody>
         </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
