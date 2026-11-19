@@ -2,11 +2,10 @@ import {
   PDFDocument, concatTransformationMatrix, popGraphicsState, pushGraphicsState, rgb,
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { enrollmentYear, schoolUnits, sections, studyModes } from './enrollment-fields.js';
+import { ageOnDate, enrollmentYear, schoolUnits, sections, studyModes } from './enrollment-fields.js';
 import { school } from './school.js';
 import { enrollmentDeclaration, imageConsentScope, staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details.js';
 import { dateInSchool, formatDate, states } from './portal-api.js';
-import { ageOnDate } from './enrollment-fields.js';
 
 const width = 595.28;
 const height = 841.89;
@@ -16,6 +15,7 @@ const inset = 11;
 const gap = 12;
 const headingHeight = 21;
 const bottom = 41;
+const blankLine = Symbol('blank line');
 const photoWidth = 3 * 72 / 2.54;
 const photoHeight = 4 * 72 / 2.54;
 const navy = rgb(.03, .13, .45);
@@ -57,9 +57,16 @@ function wrap(text, font, size, width, firstWidth = width) {
   return lines;
 }
 
-export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample = false } = {}) {
+export function createEnrollmentPdf(answers, fonts, options = {}) {
+  return createSheet(answers, fonts, options);
+}
+
+async function createSheet(answers, fonts, {
+  brand, photo, sample = false, year = enrollmentYear, schoolSections,
+}) {
+  const title = schoolSections ? 'Ficha de matrícula' : 'Ficha de pré-matrícula';
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`Ficha de pré-matrícula ${enrollmentYear} | Sonho de Criança`);
+  pdf.setTitle(`${title} ${year} | Sonho de Criança`);
   pdf.setAuthor(school.fullName);
   pdf.setLanguage('pt-BR');
   pdf.registerFontkit(fontkit);
@@ -68,8 +75,8 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
   const supportedCharacters = new Set(regular.getCharacterSet());
   const logo = brand ? await pdf.embedPng(brand) : null;
   const portrait = photo ? await pdf.embedJpg(photo) : null;
-  const page = pdf.addPage([width, height]);
-  let cursor = height - margin;
+  let page;
+  let cursor;
 
   function draw(text, x, y, size, font, color) {
     page.drawText(text, { x, y, size, font, color });
@@ -108,8 +115,8 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     roundedBox(margin, cursor, titleWidth, headerHeight, radius, { color: navy }, { topRight: 0, bottomRight: 0 });
     horizontalRule(margin + radius, headerY + 2, titleWidth - radius, rgb(1, .87, 0), 2.5);
     roundedBox(margin, cursor, boxWidth, headerHeight, radius, { borderColor: navy, borderWidth: .8 });
-    draw('Ficha de pré-matrícula', margin + 12, headerY + 29, 16, bold, white);
-    draw(String(enrollmentYear), margin + 12, headerY + 12, 13, bold, white);
+    draw(title, margin + 12, headerY + 29, 16, bold, white);
+    draw(String(year), margin + 12, headerY + 12, 13, bold, white);
     const brandX = margin + titleWidth + 11;
     if (logo) {
       const dimensions = logo.scaleToFit(68, 42);
@@ -138,11 +145,12 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
 
   const sectionWidth = boxWidth - 2 * inset;
   const personalWidth = sectionWidth - photoWidth - gap;
-  const titles = sections.map(section => section.title);
-
   function answer(name) {
-    const value = (answers[name] || '').normalize('NFC').trim().replace(/\s+/g, ' ');
-    return Array.from(value, character => supportedCharacters.has(character.codePointAt(0))
+    return safe(answers[name]).trim().replace(/\s+/g, ' ');
+  }
+
+  function safe(value) {
+    return Array.from(String(value ?? '').normalize('NFC'), character => character === '\n' || supportedCharacters.has(character.codePointAt(0))
       ? character : '\uFFFD').join('');
   }
 
@@ -150,20 +158,25 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     const lineHeight = size + 1.4;
     const labelSize = Math.max(9.5, size - .5);
 
+    function measureRow(cells) {
+      const height = Math.max(...cells.map(({ labelLines, lines }) =>
+        labelLines.length * (labelSize + 1) + 1 + lines.length * lineHeight));
+      return { cells, height: height + rowGap };
+    }
+
     function row(entries, availableWidth = sectionWidth) {
       const spare = availableWidth - gap * (entries.length - 1);
       let x = margin + inset;
       const cells = entries.map(([label, value, share = 1 / entries.length]) => {
         const cellWidth = spare * share;
-        const lines = wrap(value || 'Não informado', regular, size, cellWidth / widthScale);
+        const lines = value === blankLine ? [''] : (safe(value).trim() || 'Não informado').split('\n')
+          .flatMap(part => wrap(part, regular, size, cellWidth / widthScale));
         const labelLines = wrap(label, bold, labelSize, cellWidth);
         const cell = { labelLines, lines, x, cellWidth };
         x += cellWidth + gap;
         return cell;
       });
-      const height = Math.max(...cells.map(({ labelLines, lines }) =>
-        labelLines.length * (labelSize + 1) + 1 + lines.length * lineHeight));
-      return { cells, height: height + rowGap };
+      return measureRow(cells);
     }
 
     const birth = answer('birth').split('-').reverse().join('/');
@@ -180,28 +193,40 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
         row([['Telefone com DDD', answer('phone'), .27], ['E-mail da conta', answer('email'), .73]]),
       ] },
       { key: 'unit', rows: [row([['Unidade', schoolUnits[answers.unit]]])] },
-    ].map(block => {
-      const rowsHeight = block.rows.reduce((total, item) => total + item.height, 0) - rowGap;
-      const minHeight = block.key === 'child' ? photoHeight : 0;
-      const height = headingHeight + 2 * bodyPadding + Math.max(minHeight, rowsHeight);
-      return { ...block, height };
+    ].map((block, index) => ({ ...block, index, title: sections[index].title, photo: block.key === 'child' }));
+    if (schoolSections) {
+      const keys = Object.keys(colors);
+      schoolSections.forEach(({ title, rows }, sectionIndex) => {
+        const index = blocks.length;
+        blocks.push({ title, index, key: keys[sectionIndex % keys.length], rows: rows.map(entries => row(entries)) });
+      });
+    }
+
+    function blockHeight(rows, photo) {
+      const rowsHeight = rows.reduce((total, item) => total + item.height, -rowGap);
+      return headingHeight + 2 * bodyPadding + Math.max(photo ? photoHeight : 0, rowsHeight);
+    }
+    blocks.forEach(block => {
+      block.height = blockHeight(block.rows, block.photo);
     });
 
     const total = blocks.reduce((sum, block) => sum + block.height, 0) + sectionGap * (blocks.length - 1);
-    return { blocks, total, size, labelSize, lineHeight, sectionGap, bodyPadding, widthScale };
+    return { blocks, total, size, labelSize, lineHeight, sectionGap, bodyPadding, widthScale, blockHeight, measureRow };
   }
 
-  function drawSection(block, index, layout) {
+  function drawSection(block, layout) {
     const palette = colors[block.key];
     const radius = 8;
     roundedBox(margin, cursor, boxWidth, headingHeight, radius, { color: palette.tint }, { bottomLeft: 0, bottomRight: 0 });
     roundedBox(margin, cursor, boxWidth, block.height, radius, { borderColor: palette.accent, borderWidth: .65 });
     roundedBox(margin + 8, cursor - 4, 13, 13, 3, { color: palette.accent });
-    draw(String(index + 1), margin + 12, cursor - 14, 8.5, bold, white);
-    draw(titles[index], margin + 28, cursor - 15, 12, bold, palette.accent);
+    const number = String(block.index + 1);
+    const badgeX = margin + (number.length === 1 ? 12 : 8 + (13 - bold.widthOfTextAtSize(number, 8.5)) / 2);
+    draw(number, badgeX, cursor - 14, 8.5, bold, white);
+    draw(block.title, margin + 28, cursor - 15, 12, bold, palette.accent);
     const { size, labelSize, lineHeight, bodyPadding, sectionGap, widthScale } = layout;
     let top = cursor - headingHeight - bodyPadding;
-    if (block.key === 'child') drawPhoto(top, palette.accent);
+    if (block.photo) drawPhoto(top, palette.accent);
 
     for (const row of block.rows) {
       for (const { labelLines, lines, x, cellWidth } of row.cells) {
@@ -217,7 +242,63 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
     cursor -= block.height + sectionGap;
   }
 
-  drawHeader();
+  function addPage() {
+    page = pdf.addPage([width, height]);
+    cursor = height - margin;
+    drawHeader();
+  }
+
+  function drawFooter(note, numbering) {
+    horizontalRule(margin, 35, boxWidth, rule);
+    draw(note, margin, 21, 9, regular, muted);
+    if (numbering) {
+      draw(numbering, width - margin - regular.widthOfTextAtSize(numbering, 9), 21, 9, regular, muted);
+    }
+  }
+
+  function drawSchoolSections(layout) {
+    const { blockHeight, measureRow } = layout;
+    const pageTop = cursor;
+    for (const block of layout.blocks) {
+      const rows = [...block.rows];
+      let continued = false;
+      while (rows.length) {
+        const hasPhoto = block.photo && !continued;
+        if (cursor < pageTop && blockHeight([rows[0]], hasPhoto) > cursor - bottom) addPage();
+        let fragment = [];
+        while (rows.length && blockHeight([...fragment, rows[0]], hasPhoto) <= cursor - bottom) {
+          fragment.push(rows.shift());
+        }
+        if (!fragment.length) {
+          // Preserve answers taller than a full sheet by continuing their wrapped lines.
+          const row = rows[0];
+          let lineCount = 1;
+          const sliceCells = count => row.cells.map(cell => ({ ...cell, lines: cell.lines.slice(0, count) }));
+          while (blockHeight([measureRow(sliceCells(lineCount + 1))], hasPhoto) <= cursor - bottom) {
+            lineCount += 1;
+          }
+          fragment = [measureRow(sliceCells(lineCount))];
+          rows[0] = measureRow(row.cells.map(cell => ({ ...cell, lines: cell.lines.slice(lineCount) })));
+        }
+        const title = continued ? `${block.title} (continuação)` : block.title;
+        drawSection({ ...block, title, rows: fragment, photo: hasPhoto, height: blockHeight(fragment, hasPhoto) }, layout);
+        if (rows.length) addPage();
+        continued = true;
+      }
+    }
+  }
+
+  addPage();
+  if (schoolSections) {
+    drawSchoolSections(buildLayout(12.5, 6, 8, 17));
+    const pages = pdf.getPages();
+    pages.forEach((sheet, index) => {
+      page = sheet;
+      drawFooter(`${school.fullName} · Secretaria`, `${index + 1} / ${pages.length}`);
+    });
+    return pdf.save();
+  }
+
   const available = cursor - bottom;
   // Preserve the type size first. Reduce spacing before adjusting very long answers.
   const layouts = [
@@ -243,113 +324,58 @@ export async function createEnrollmentPdf(answers, fonts, { brand, photo, sample
   // Distribute unused space across all sections while preserving a gap before the footer.
   const extraPadding = Math.min(9, Math.max(0, (available - layout.total - 12) / (2 * layout.blocks.length)));
   layout.bodyPadding += extraPadding;
-  layout.blocks.forEach((block, index) => {
-    drawSection({ ...block, height: block.height + 2 * extraPadding }, index, layout);
+  layout.blocks.forEach(block => {
+    drawSection({ ...block, height: block.height + 2 * extraPadding }, layout);
   });
 
-  horizontalRule(margin, 35, boxWidth, rule);
-  draw('Pré-matrícula sujeita à confirmação da escola.', margin, 21, 9, regular, muted);
+  drawFooter('Pré-matrícula sujeita à confirmação da escola.');
   return pdf.save();
 }
 
-export async function createSchoolEnrollmentPdf(item, record, fonts, brand) {
-  const pdf = await PDFDocument.create();
-  pdf.setTitle(`Ficha de matrícula ${item.school_year} | ${item.child_name}`);
-  pdf.setLanguage('pt-BR');
-  pdf.setAuthor(school.fullName);
-  pdf.registerFontkit(fontkit);
-  const regular = await pdf.embedFont(fonts.regular, { subset: true });
-  const bold = await pdf.embedFont(fonts.bold, { subset: true });
-  const logo = brand ? await pdf.embedPng(brand) : null;
-  const photo = record?.photo ? await pdf.embedJpg(record.photo) : null;
-  const charset = new Set(regular.getCharacterSet());
-  const safe = value => Array.from(String(value ?? '—').normalize('NFC'), character =>
-    character === '\n' || charset.has(character.codePointAt(0)) ? character : '�').join('');
-  let page;
-  let y;
-
-  function line(text, x, position, size = 10, font = regular, color = ink) {
-    page.drawText(safe(text), { x, y: position, size, font, color });
-  }
-
-  function addPage(first = false) {
-    page = pdf.addPage([width, height]);
-    if (logo) {
-      const image = logo.scaleToFit(64, 42);
-      page.drawImage(logo, { x: margin, y: height - margin - image.height, ...image });
-    }
-    const headingX = logo ? margin + 76 : margin;
-    const photoSize = first && photo ? { width: 75, height: 100 } : null;
-    if (photoSize) page.drawImage(photo, { x: width - margin - photoSize.width, y: height - margin - photoSize.height, ...photoSize });
-    line(`Ficha de matrícula ${item.school_year}`, headingX, height - margin - 18, 19, bold, navy);
-    line(school.fullName, headingX, height - margin - 36, 11, bold);
-    let nameY = height - margin - 56;
-    for (const part of wrap(safe(item.child_name), regular, 11, width - margin - headingX - (photoSize ? 85 : 0))) {
-      line(part, headingX, nameY, 11);
-      nameY -= 14;
-    }
-    line(`Protocolo ${item.protocol}`, headingX, nameY, 9, regular, muted);
-    y = Math.min(nameY - 22, height - margin - (photoSize ? photoSize.height + 22 : 0));
-  }
-
-  function heading(title) {
-    if (y < 100) addPage();
-    page.drawRectangle({ x: margin, y: y - 5, width: boxWidth, height: 22, color: rgb(.91, .96, .97) });
-    line(title, margin + 9, y + 2, 11.5, bold, navy);
-    y -= 24;
-  }
-
-  function row(label, value) {
-    const labelWidth = 228;
-    const labels = wrap(safe(label), bold, 9.5, labelWidth - 14);
-    const parts = safe(value || '—').split(/\r?\n/).flatMap(value => wrap(value, regular, 10, boxWidth - labelWidth - 11));
-    const rows = Math.max(labels.length, parts.length);
-    if (y - 13 * Math.min(rows, 3) < bottom + 13) addPage();
-    for (let index = 0; index < rows; index += 1) {
-      if (y < bottom + 13) {
-        addPage();
-        line(`${label} (continuação)`, margin + 8, y, 8, bold, muted);
-        y -= 13;
-      }
-      if (labels[index]) line(labels[index], margin + 8, y, 9.5, bold, muted);
-      if (parts[index]) line(parts[index], margin + labelWidth, y);
-      y -= 13;
-    }
-    y -= 7;
-  }
-
-  const values = { ...record?.details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
+export function createSchoolEnrollmentPdf(item, record, fonts, brand) {
+  const details = record?.details ?? {};
   const age = item.birth_date ? ageOnDate(item.birth_date, dateInSchool()) : null;
-  const groups = [
-    { title: 'Identificação e pré-matrícula', rows: [
-      ['Nome da criança', item.child_name], ['Data de nascimento', formatDate(item.birth_date)],
-      ['Idade na emissão', age === null ? '' : String(age)], ['Ano letivo', String(item.school_year)],
-      ['Modalidade', studyModes[item.schedule]], ['Unidade', schoolUnits[item.unit]], ['Situação', states[item.status]],
-    ] },
-    { title: 'Contato do responsável', rows: [
-      ['Nome', item.guardian_name], ['Vínculo', item.guardian_relationship], ['Telefone', item.guardian_phone], ['E-mail', item.guardian_email],
-    ] },
-    ...staffEnrollmentSections.map(({ title, fields }) => ({
-      title, rows: visibleEnrollmentFields(fields, values).map(({ name, label }) => [label, values[name]]),
-    })),
-  ];
-  addPage(true);
-  for (const group of groups) {
-    heading(group.title);
-    for (const [label, value] of group.rows) row(label, value);
-    if (group.title === 'Autorização de uso de imagem') row('Escopo da autorização', imageConsentScope);
-    if (group.title === 'Formalização da matrícula') row('Declaração do responsável', enrollmentDeclaration);
-    y -= 7;
-  }
-  if (y < 91) addPage();
-  page.drawLine({ start: { x: margin, y: y - 14 }, end: { x: margin + 250, y: y - 14 }, thickness: .7, color: rule });
-  line('Assinatura do responsável', margin, y - 28, 9, regular, muted);
-
-  const pages = pdf.getPages();
-  pages.forEach((sheet, index) => {
-    page = sheet;
-    line('Creche Escola Sonho de Criança · Secretaria', margin, 22, 8, regular, muted);
-    line(`${index + 1} / ${pages.length}`, width - margin - 36, 22, 8, regular, muted);
+  const answers = {
+    child: item.child_name,
+    birth: item.birth_date,
+    age: age === null ? '' : `${age} ${age === 1 ? 'ano' : 'anos'}`,
+    sex: details.sex,
+    address: details.address,
+    district: details.district,
+    cep: details.cep,
+    schedule: item.schedule,
+    guardian: item.guardian_name,
+    relationship: item.guardian_relationship,
+    phone: item.guardian_phone,
+    email: item.guardian_email,
+    unit: item.unit,
+  };
+  const values = { ...details, registration_date: formatDate(record?.registration_date), grade: record?.grade };
+  const [, ...extraSections] = staffEnrollmentSections;
+  const schoolSections = extraSections.map(({ title, fields }) => {
+    const rows = [];
+    let pair = [];
+    for (const { name, label, wide } of visibleEnrollmentFields(fields, values)) {
+      if (wide) {
+        if (pair.length) rows.push(pair);
+        pair = [];
+        rows.push([[label, values[name]]]);
+      } else {
+        pair.push([label, values[name]]);
+        if (pair.length === 2) {
+          rows.push(pair);
+          pair = [];
+        }
+      }
+    }
+    if (pair.length) rows.push(pair);
+    return { title, rows };
   });
-  return pdf.save();
+  schoolSections[schoolSections.length - 2].rows.push([['Escopo da autorização', imageConsentScope]]);
+  schoolSections[schoolSections.length - 1].rows.push(
+    [['Protocolo', item.protocol], ['Situação', states[item.status]]],
+    [['Declaração do responsável', enrollmentDeclaration]],
+    [['Assinatura do responsável', blankLine]],
+  );
+  return createSheet(answers, fonts, { brand, photo: record?.photo, year: item.school_year, schoolSections });
 }
