@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, ArrowRight, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, Heart, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight, Pause, Play } from 'lucide-react';
 import { school } from './school';
 import './styles.css';
 
@@ -23,6 +23,116 @@ const experiences = [
 function Flower({ className = '' }) {
   return <svg className={className} viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M50 28C20-10-10 23 28 50-10 78 23 110 50 72c28 38 60 5 22-22 38-28 5-60-22-22Z" fill="currentColor"/><circle cx="50" cy="50" r="13" fill="#fff9eb"/><path d="M44 49h1m11 0h1m-12 7q6 6 12 0" stroke="#102a67" strokeWidth="3" strokeLinecap="round"/></svg>;
 }
+const banners = [
+  {
+    name: 'Apresentação da escola',
+    eyebrow: 'UM COMEÇO CHEIO DE POSSIBILIDADES',
+    title: ['Pequenos passos.', 'Descobertas', 'gigantes'],
+    description: 'Uma infância com espaço para brincar, imaginar e crescer. Cada criança, um universo inteiro de possibilidades.',
+    image: 'festa-anos-80-capa.webp',
+    alt: 'Criança de vestido branco na festa anos 80 da escola',
+    action: 'Quero conhecer a escola',
+    href: '#contato',
+  },
+  {
+    name: 'Vivências',
+    eyebrow: 'VIVÊNCIAS',
+    title: ['Histórias,', 'cores e', 'movimento'],
+    description: 'Veja as crianças da Sonho de Criança em uma das atividades da escola.',
+    image: experiences[0].image,
+    alt: experiences[0].label,
+    action: 'Ver fotos da escola',
+    href: '#vivencias',
+  },
+  {
+    name: 'Pré-matrícula',
+    eyebrow: 'PORTAL DA FAMÍLIA',
+    title: ['Um novo', 'começo para', 'sua criança'],
+    description: 'Inicie a pré-matrícula ou acompanhe sua solicitação no Portal da Família.',
+    image: experiences[1].image,
+    alt: experiences[1].label,
+    action: 'Fazer pré-matrícula',
+    href: './portal.html',
+  },
+];
+
+function HeroCarousel() {
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const banner = banners[active];
+
+  useEffect(() => {
+    if (paused || focused || hovered) return;
+    const timer = window.setTimeout(() => setActive((active + 1) % banners.length), 7000);
+    return () => window.clearTimeout(timer);
+  }, [active, paused, focused, hovered]);
+
+  return (
+    <section
+      id="inicio"
+      className="hero section-wrap"
+      aria-label="Destaques da escola"
+      aria-roledescription="carrossel"
+      onFocus={() => setFocused(true)}
+      onBlur={event => setFocused(event.currentTarget.contains(event.relatedTarget))}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="hero-carousel-text">
+        <div className="hero-carousel-copy">
+          {banners.map(({name, eyebrow, title, description, action, href}, index) => {
+            const Heading = index === 0 ? 'h1' : 'h2';
+            return (
+              <div
+                key={name}
+                className="hero-copy"
+                role="group"
+                aria-roledescription="banner"
+                aria-label={name}
+                inert={index !== active}
+              >
+                <span className="eyebrow"><span className="little-line" />{eyebrow}</span>
+                <Heading className="hero-slide-heading">
+                  {title[0]}<br />
+                  <span className="hero-accent">{title[1]}</span><br />
+                  <span className="highlight">{title[2]}<svg viewBox="0 0 400 20" aria-hidden="true"><path d="M5 12Q180-3 390 10M35 19Q180 7 340 16" /></svg></span><span className="coral">.</span>
+                </Heading>
+                <p>{description}</p>
+                <div className="hero-actions">
+                  <a className={index === 2 ? 'button' : 'text-link'} href={href}>
+                    {action} <ArrowRight size={18} aria-hidden="true" />
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="hero-footnote"><Heart size={17} aria-hidden="true" /><span>Para crianças de <strong>2 a 5 anos</strong>. Para uma infância inteira.</span></div>
+        <div className="hero-carousel-controls" role="group" aria-label="Controles dos banners">
+          {banners.map(({name}, index) => (
+            <button key={name} type="button" aria-label={`Mostrar banner: ${name}`} aria-pressed={active === index} onClick={() => setActive(index)}>
+              <span aria-hidden="true" />
+            </button>
+          ))}
+          <button type="button" aria-label={paused ? 'Ativar rotação automática' : 'Pausar rotação automática'} onClick={() => setPaused(!paused)}>
+            {paused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
+          </button>
+        </div>
+      </div>
+      <div className="hero-visual">
+        <div className="photo-outline" />
+        <img className="hero-photo" src={asset(banner.image)} width="360" height="640" fetchPriority={active === 0 ? 'high' : 'auto'} alt={banner.alt} />
+        <span className="photo-tag"><span className="tag-sun" aria-hidden="true">✳</span> Ser criança é uma descoberta diária.</span>
+        <div className="round-stamp"><span>BRINCAR É</span><Heart fill="currentColor" size={26} aria-hidden="true" /><span>COISA SÉRIA</span></div>
+        <Flower className="hero-flower" />
+        <svg className="hero-doodle" viewBox="0 0 100 100" aria-hidden="true"><path d="M14 70Q70 10 82 50q-1 22-27 6t-5-38M83 13l-3 16 16-5" /></svg>
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [menu, setMenu] = useState(false);
   const [gallery, setGallery] = useState(null);
@@ -58,31 +168,7 @@ function App() {
     <div className="topline"><span>Pequenas descobertas. Grandes começos.</span><span><span className="status-dot"/> Educação infantil · 2 a 5 anos</span></div>
     <header><div className="nav-wrap"><Brand/><nav id="main-navigation" aria-label="Menu principal" className={menu ? 'is-open' : ''}>{links.map(([label, id]) => <a key={id} href={`#${id}`} onClick={() => setMenu(false)}>{label}</a>)}<a href={school.instagram} target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>Instagram</a><a className="button small nav-contact" href="#contato" onClick={() => setMenu(false)}>Vamos conversar <ArrowUpRight size={17}/></a></nav><button className="menu-toggle" aria-label={menu ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button></div></header>
     <main id="conteudo">
-      <section id="inicio" className="home-banner section-wrap" aria-labelledby="home-title">
-        <div className="home-banner-copy">
-          <span className="eyebrow">Educação infantil · 2 a 5 anos</span>
-          <h1 id="home-title">Pequenos passos.<br/><span>Descobertas gigantes.</span></h1>
-          <p>Uma infância com espaço para brincar, imaginar e crescer.</p>
-          <a className="text-link" href="#contato">Conheça a escola <ArrowRight size={18} aria-hidden="true" /></a>
-        </div>
-        <img
-          className="home-banner-photo"
-          src={asset('festa-anos-80-capa.webp')}
-          width="360"
-          height="640"
-          fetchPriority="high"
-          alt="Criança de vestido branco na festa anos 80 da escola"
-        />
-      </section>
-      <section className="home-enrollment section-wrap" aria-labelledby="enrollment-banner-title">
-        <a className="home-enrollment-link" href="./portal.html">
-          <div>
-            <h2 id="enrollment-banner-title">Pré-matrícula</h2>
-            <p>Entre no Portal da Família para fazer a pré-matrícula ou acompanhar sua solicitação.</p>
-          </div>
-          <span>Acessar Portal da Família <ArrowUpRight size={19} aria-hidden="true" /></span>
-        </a>
-      </section>
+      <HeroCarousel />
       <div className="values-ribbon" aria-label="Valores que inspiram este projeto"><div><span>Aprender brincando</span><Sparkles/><span>Crescer com afeto</span><Sparkles/><span>Imaginar sem limites</span><Sparkles/><span>Descobrir o mundo</span><Sparkles/></div></div>
       <section id="vivencias" className="section-wrap section-space experiences">
         <div className="section-heading">
