@@ -74,10 +74,10 @@ function HeroCarousel() {
       onMouseLeave={() => setHovered(false)}
     >
       {showEnrollment && (
-        <div className="hero-enrollment" role="group" aria-roledescription="banner" aria-labelledby="hero-enrollment-title">
-          <h2 id="hero-enrollment-title">Matrículas <strong>abertas</strong></h2>
-          <a href="./portal.html">Fazer pré-matrícula <ArrowRight size={22} aria-hidden="true" /></a>
-        </div>
+        <a className="hero-enrollment" href="./portal.html">
+          <h2>Matrículas <strong>abertas</strong></h2>
+          <span className="hero-enrollment-action">Fazer pré-matrícula <ArrowRight size={22} aria-hidden="true" /></span>
+        </a>
       )}
       <div className="hero-carousel-text">
         <div className="hero-carousel-copy">
