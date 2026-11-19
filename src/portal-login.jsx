@@ -82,7 +82,7 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
         const { error } = await client.auth.signUp({ email: address, password, options: { emailRedirectTo: returnTo(false) } });
         if (error) throw error;
         changeMode('enter');
-        setNotice('Confira seu e-mail para confirmar o cadastro.');
+        setNotice('Confira seu e-mail para confirmar o cadastro. Se a mensagem não chegou à caixa de entrada, verifique também a pasta de spam ou lixo eletrônico.');
       } else if (activeMode === 'forgot') {
         const { error } = await client.auth.resetPasswordForEmail(address, { redirectTo: returnTo(staff) });
         if (error) throw error;
