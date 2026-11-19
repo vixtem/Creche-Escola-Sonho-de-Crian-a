@@ -77,35 +77,39 @@ function Family({ client, user }) {
 
   return <>
     <div className="portal-stack-head"><h2>Minhas crianças</h2>
-      <a className="button" href="./pre-matricula.html?nova=1">Cadastrar criança</a>
+      <div className="portal-family-toolbar">
+        <button className="text-link" type="button" onClick={refresh}>Atualizar situação</button>
+        <a className="button" href="./pre-matricula.html?nova=1">Cadastrar criança</a>
+      </div>
     </div>
     <p role="status">{error || (!children ? 'Carregando fichas…' : '')}</p>
-    {error && <button className="text-link" type="button" onClick={refresh}>Atualizar lista</button>}
     {children?.length === 0 && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
     {children?.map(child => {
-      const application = applications.find(item => item.child_id === child.id && item.school_year === enrollmentYear);
-      return <article className="portal-card" key={child.id}>
-        <h3>{child.full_name}</h3>
-        <p>Nascimento em {formatDate(child.birth_date)}</p>
-        <div className="portal-actions">
+      const requests = applications.filter(item => item.child_id === child.id);
+      const hasCurrentRequest = requests.some(item => item.school_year === enrollmentYear);
+      return <article className="portal-card portal-family-card" key={child.id}>
+        <div className="portal-family-card-head">
+          <div>
+            <h3>{child.full_name}</h3>
+            <p>Nascimento em {formatDate(child.birth_date)}</p>
+          </div>
           <a className="button" href={`./pre-matricula.html?crianca=${encodeURIComponent(child.id)}`}>
-            {application ? 'Editar pré-matrícula' : 'Preencher pré-matrícula'}
+            {hasCurrentRequest ? 'Editar pré-matrícula' : 'Preencher pré-matrícula'}
           </a>
         </div>
+        {requests.length === 0 && <p className="portal-family-request">Pré-matrícula ainda não enviada.</p>}
+        {requests.map(item => <div className="portal-family-request" key={item.id}>
+          {item.child_name !== child.full_name && <p>Nome na solicitação: {item.child_name}</p>}
+          <dl className="portal-family-request-details">
+            <div><dt>Ano letivo</dt><dd>{item.school_year}</dd></div>
+            <div><dt>Modalidade</dt><dd>{studyModes[item.schedule]}</dd></div>
+            <div><dt>Unidade</dt><dd>{schoolUnits[item.unit] || 'Não informada'}</dd></div>
+            <div><dt>Situação</dt><dd><strong className="portal-status">{states[item.status]}</strong></dd></div>
+          </dl>
+          <History key={item.status} client={client} item={item} />
+        </div>)}
       </article>;
     })}
-    <div className="portal-stack-head"><h2>Minhas solicitações</h2>
-      <button className="text-link" type="button" onClick={refresh}>Atualizar situação</button></div>
-    {children && applications.length === 0 && <p>As pré-matrículas enviadas aparecem aqui.</p>}
-    {applications.map(item => <article className="portal-card" key={item.id}>
-      <h3>{item.child_name}</h3>
-      <p>{item.school_year} · {studyModes[item.schedule]}{item.unit ? ` · ${schoolUnits[item.unit]}` : ''}</p>
-      <strong className="portal-status">{states[item.status]}</strong>
-      {item.school_year === enrollmentYear && <div className="portal-actions"><a className="text-link" href={`./pre-matricula.html?crianca=${encodeURIComponent(item.child_id)}`}>
-        Editar pré-matrícula
-      </a></div>}
-      <History key={item.status} client={client} item={item} />
-    </article>)}
   </>;
 }
 
