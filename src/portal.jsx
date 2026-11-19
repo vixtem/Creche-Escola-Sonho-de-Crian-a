@@ -311,12 +311,13 @@ function Secretariat({ client }) {
     && (!schedule || item.schedule === schedule)
     && (!unit || (item.unit ?? 'unspecified') === unit) && (age === '' || item.age === Number(age)));
   const screenRows = [...filtered].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const enrolled = filtered.filter(item => item.status === 'enrolled').length;
+  const enrolled = filtered.filter(item => item.status === 'enrolled');
   const active = filtered.filter(item => !['enrolled','declined'].includes(item.status)).length;
-  const counts = (keys, keyFor) => Object.fromEntries(keys.map(key => [key, filtered.filter(item => keyFor(item) === key).length]));
+  const counts = (keys, keyFor, rows = filtered) => Object.fromEntries(keys.map(key => [key, rows.filter(item => keyFor(item) === key).length]));
   const byStatus = counts(Object.keys(states), item => item.status);
   const bySchedule = counts(schedules, item => item.schedule);
   const byUnit = counts(Object.keys(reportUnits), item => item.unit ?? 'unspecified');
+  const enrolledByUnit = counts(Object.keys(reportUnits), item => item.unit ?? 'unspecified', enrolled);
   const byAge = counts(ages, item => item.age);
   const showing = items.find(item => item.id === sheet?.id);
 
@@ -411,8 +412,16 @@ function Secretariat({ client }) {
       {!loading && !error && <>
         <div className="portal-metrics">
           <div><strong>{active}</strong>Pré-matrículas em andamento</div>
-          <div><strong>{enrolled}</strong>Matrículas confirmadas</div>
+          <div><strong>{enrolled.length}</strong>Matrículas confirmadas</div>
           <div><strong>{filtered.length}</strong>Total de solicitações no filtro</div>
+          <div className="portal-unit-metric">
+            <h3>Nossas unidades</h3>
+            <p>Matrículas confirmadas por unidade</p>
+            <dl>
+              {Object.entries(schoolUnits).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{enrolledByUnit[key]}</dd></div>)}
+              {enrolledByUnit.unspecified > 0 && <div><dt>{reportUnits.unspecified}</dt><dd>{enrolledByUnit.unspecified}</dd></div>}
+            </dl>
+          </div>
         </div>
         <div className="portal-breakdown">
           <section><h3>Por situação</h3><dl>{Object.entries(states).map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{byStatus[key]}</dd></div>)}</dl></section>

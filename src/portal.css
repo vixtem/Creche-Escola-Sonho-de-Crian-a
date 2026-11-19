@@ -27,8 +27,11 @@
 .portal-filters, .portal-metrics, .portal-breakdown { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-block:14px; }
 .portal-metrics > div, .portal-breakdown > section { padding:12px; background:#f3f8fa; border-radius:8px; }
 .portal-metrics strong { display:block; font-size:1.5rem; }
-.portal-breakdown dl > div { display:flex; justify-content:space-between; gap:8px; margin-top:6px; }
-.portal-breakdown dd { font-weight:700; }
+.portal-unit-metric dl { margin:0; }
+.portal-unit-metric p { font-size:.87rem; line-height:1.4; margin-top:2px; }
+:is(.portal-breakdown, .portal-unit-metric) dl > div { display:flex; justify-content:space-between; gap:8px; margin-top:6px; }
+:is(.portal-breakdown, .portal-unit-metric) dd { font-weight:700; }
+.portal-unit-metric dd { margin:0; }
 .portal-table-wrap { overflow-x:auto; }
 .portal table { width:100%; border-collapse:collapse; text-align:left; }
 .portal caption { text-align:left; font-weight:700; padding:8px 0; }
