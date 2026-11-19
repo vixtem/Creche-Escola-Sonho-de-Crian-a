@@ -59,18 +59,21 @@
   padding: 0;
   list-style: none;
 }
-.school-units li {
+.school-units a {
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  min-height: 100%;
   padding: clamp(20px, 3vw, 34px);
   border-radius: 18px;
   background: #e1f8f5;
 }
-.school-units li:nth-child(2) { background: #fff5cb; }
+.school-units li:nth-child(2) a { background: #fff5cb; }
 .school-units svg { flex-shrink: 0; color: #13685d; }
 .school-units h3 { font-size: clamp(20px, 2.5vw, 28px); font-weight: 900; }
 .school-units p { margin-top: 4px; }
+.school-unit-action { display: inline-block; margin-top: 8px; font-weight: 700; color: #13685d; text-decoration: underline; text-underline-offset: 3px; }
+.school-units a:hover .school-unit-action { color: var(--navy); }
 @media (max-width: 650px) {
   .school-units { grid-template-columns: 1fr; }
 }

@@ -46,12 +46,24 @@ function SchoolUnits() {
       <div className="section-heading"><h2 id="units-heading">Nossas unidades</h2></div>
       <ul className="school-units">
         <li>
-          <MapPin size={26} aria-hidden="true" />
-          <div><h3>Jardim Eldorado</h3><p>Região da Chácara Brasil</p></div>
+          <a href="https://maps.app.goo.gl/3ciqRZLCaMfg7hv5A" target="_blank" rel="noopener noreferrer">
+            <MapPin size={26} aria-hidden="true" />
+            <div>
+              <h3>Jardim Eldorado</h3>
+              <p>Região da Chácara Brasil</p>
+              <span className="school-unit-action">Ver no Google Maps</span>
+            </div>
+          </a>
         </li>
         <li>
-          <MapPin size={26} aria-hidden="true" />
-          <div><h3>Parque Vitória</h3><p>Região do Turu</p></div>
+          <a href="https://maps.app.goo.gl/BcQva6khpaE8MMsP7" target="_blank" rel="noopener noreferrer">
+            <MapPin size={26} aria-hidden="true" />
+            <div>
+              <h3>Parque Vitória</h3>
+              <p>Região do Turu</p>
+              <span className="school-unit-action">Ver no Google Maps</span>
+            </div>
+          </a>
         </li>
       </ul>
     </section>
