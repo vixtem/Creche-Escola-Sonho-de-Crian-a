@@ -388,10 +388,12 @@ function Portal() {
         <h1>{staffMode ? 'Secretaria' : 'Portal da família'}</h1>
         <p>{staffMode ? 'Organize solicitações e matrículas.' : 'Cadastre suas crianças e acompanhe a pré-matrícula.'}</p>
       </header>
-      <div className="portal-stack-head portal-session">
-        <a className="text-link" href={staffMode ? './portal.html' : './portal.html?area=secretaria'}>{staffMode ? 'Portal da família' : 'Acesso da secretaria'}</a>
-        {session && <button type="button" className="text-link" onClick={leave}><LogOut size={17}/> {client?.demo ? 'Voltar ao login' : 'Sair'}</button>}
-      </div>
+      {(staffMode || session) && (
+        <div className="portal-stack-head portal-session">
+          {staffMode && <a className="text-link" href="./portal.html">Portal da família</a>}
+          {session && <button type="button" className="text-link" onClick={leave}><LogOut size={17}/> {client?.demo ? 'Voltar ao login' : 'Sair'}</button>}
+        </div>
+      )}
     </div>
     {client?.demo && <p className="enrollment-privacy portal-demo-notice">
       <span><strong>Modo de teste.</strong> Use apenas dados fictícios. Os testes ficam nesta aba e não são enviados à escola.</span>
