@@ -129,8 +129,8 @@ async function createSheet(answers, fonts, {
     cursor = headerY - (sample ? 19 : 8);
   }
 
-  function drawPhoto(top, accent) {
-    const x = margin + boxWidth - inset - photoWidth;
+  function drawPhoto(top, accent, bodyWidth) {
+    const x = margin + bodyWidth - inset - photoWidth;
     if (portrait) {
       page.drawImage(portrait, { x, y: top - photoHeight, width: photoWidth, height: photoHeight });
     } else {
@@ -143,8 +143,6 @@ async function createSheet(answers, fonts, {
     roundedBox(x, top, photoWidth, photoHeight, portrait ? 0 : 7, { borderColor: accent, borderWidth: .65 });
   }
 
-  const sectionWidth = boxWidth - 2 * inset;
-  const personalWidth = sectionWidth - photoWidth - gap;
   function answer(name) {
     return safe(answers[name]).trim().replace(/\s+/g, ' ');
   }
@@ -154,9 +152,11 @@ async function createSheet(answers, fonts, {
       ? character : '\uFFFD').join('');
   }
 
-  function buildLayout(size, rowGap, sectionGap, bodyPadding, widthScale = 1) {
+  function buildLayout(size, rowGap, sectionGap, bodyPadding, widthScale = 1, foldLineBreaks = false, bodyWidth = boxWidth) {
+    const sectionWidth = bodyWidth - 2 * inset;
+    const personalWidth = sectionWidth - photoWidth - gap;
     const lineHeight = size + 1.4;
-    const labelSize = Math.max(9.5, size - .5);
+    const labelSize = Math.max(schoolSections ? 8 : 9.5, size - .5);
 
     function measureRow(cells) {
       const height = Math.max(...cells.map(({ labelLines, lines }) =>
@@ -169,8 +169,9 @@ async function createSheet(answers, fonts, {
       let x = margin + inset;
       const cells = entries.map(([label, value, share = 1 / entries.length]) => {
         const cellWidth = spare * share;
-        const lines = value === blankLine ? [''] : (safe(value).trim() || 'Não informado').split('\n')
-          .flatMap(part => wrap(part, regular, size, cellWidth / widthScale));
+        const content = value === blankLine ? '' : safe(value).trim() || 'Não informado';
+        const paragraphs = foldLineBreaks ? [content] : content.split('\n');
+        const lines = paragraphs.flatMap(part => wrap(part, regular, size, cellWidth / widthScale));
         const labelLines = wrap(label, bold, labelSize, cellWidth);
         const cell = { labelLines, lines, x, cellWidth };
         x += cellWidth + gap;
@@ -211,14 +212,14 @@ async function createSheet(answers, fonts, {
     });
 
     const total = blocks.reduce((sum, block) => sum + block.height, 0) + sectionGap * (blocks.length - 1);
-    return { blocks, total, size, labelSize, lineHeight, sectionGap, bodyPadding, widthScale, blockHeight, measureRow };
+    return { blocks, total, size, labelSize, lineHeight, sectionGap, bodyPadding, widthScale, bodyWidth, blockHeight, measureRow };
   }
 
   function drawSection(block, layout) {
     const palette = colors[block.key];
     const radius = 8;
-    roundedBox(margin, cursor, boxWidth, headingHeight, radius, { color: palette.tint }, { bottomLeft: 0, bottomRight: 0 });
-    roundedBox(margin, cursor, boxWidth, block.height, radius, { borderColor: palette.accent, borderWidth: .65 });
+    roundedBox(margin, cursor, layout.bodyWidth, headingHeight, radius, { color: palette.tint }, { bottomLeft: 0, bottomRight: 0 });
+    roundedBox(margin, cursor, layout.bodyWidth, block.height, radius, { borderColor: palette.accent, borderWidth: .65 });
     roundedBox(margin + 8, cursor - 4, 13, 13, 3, { color: palette.accent });
     const number = String(block.index + 1);
     const badgeX = margin + (number.length === 1 ? 12 : 8 + (13 - bold.widthOfTextAtSize(number, 8.5)) / 2);
@@ -226,10 +227,11 @@ async function createSheet(answers, fonts, {
     draw(block.title, margin + 28, cursor - 15, 12, bold, palette.accent);
     const { size, labelSize, lineHeight, bodyPadding, sectionGap, widthScale } = layout;
     let top = cursor - headingHeight - bodyPadding;
-    if (block.photo) drawPhoto(top, palette.accent);
+    if (block.photo) drawPhoto(top, palette.accent, layout.bodyWidth);
 
     for (const row of block.rows) {
       for (const { labelLines, lines, x, cellWidth } of row.cells) {
+        if (!lines.length) continue;
         const labelStep = labelSize + 1;
         labelLines.forEach((label, index) => draw(label, x, top - labelSize - index * labelStep, labelSize, bold, muted));
         const y = top - labelLines.length * labelStep - 1 - size;
@@ -256,45 +258,89 @@ async function createSheet(answers, fonts, {
     }
   }
 
-  function drawSchoolSections(layout) {
-    const { blockHeight, measureRow } = layout;
-    const pageTop = cursor;
+  function paginate(layout, available) {
+    const { blockHeight, measureRow, sectionGap } = layout;
+    const sheets = [[]];
+    let remaining = available;
+
+    function nextSheet() {
+      sheets.push([]);
+      remaining = available;
+    }
+
     for (const block of layout.blocks) {
       const rows = [...block.rows];
       let continued = false;
       while (rows.length) {
         const hasPhoto = block.photo && !continued;
-        if (cursor < pageTop && blockHeight([rows[0]], hasPhoto) > cursor - bottom) addPage();
+        if (remaining < available && blockHeight([rows[0]], hasPhoto) > remaining) nextSheet();
         let fragment = [];
-        while (rows.length && blockHeight([...fragment, rows[0]], hasPhoto) <= cursor - bottom) {
+        while (rows.length && blockHeight([...fragment, rows[0]], hasPhoto) <= remaining) {
           fragment.push(rows.shift());
         }
         if (!fragment.length) {
-          // Preserve answers taller than a full sheet by continuing their wrapped lines.
+          // Continue individual answers that exceed a full page.
           const row = rows[0];
-          let lineCount = 1;
+          const lineLimit = Math.max(...row.cells.map(cell => cell.lines.length));
           const sliceCells = count => row.cells.map(cell => ({ ...cell, lines: cell.lines.slice(0, count) }));
-          while (blockHeight([measureRow(sliceCells(lineCount + 1))], hasPhoto) <= cursor - bottom) {
+          let lineCount = 1;
+          while (lineCount < lineLimit && blockHeight([measureRow(sliceCells(lineCount + 1))], hasPhoto) <= remaining) {
             lineCount += 1;
           }
           fragment = [measureRow(sliceCells(lineCount))];
           rows[0] = measureRow(row.cells.map(cell => ({ ...cell, lines: cell.lines.slice(lineCount) })));
         }
         const title = continued ? `${block.title} (continuação)` : block.title;
-        drawSection({ ...block, title, rows: fragment, photo: hasPhoto, height: blockHeight(fragment, hasPhoto) }, layout);
-        if (rows.length) addPage();
+        const height = blockHeight(fragment, hasPhoto);
+        sheets.at(-1).push({ ...block, title, rows: fragment, photo: hasPhoto, height });
+        remaining -= height + sectionGap;
+        if (rows.length) nextSheet();
         continued = true;
       }
     }
+    return sheets;
   }
 
   addPage();
   if (schoolSections) {
-    drawSchoolSections(buildLayout(12.5, 6, 8, 17));
-    const pages = pdf.getPages();
-    pages.forEach((sheet, index) => {
-      page = sheet;
-      drawFooter(`${school.fullName} · Secretaria`, `${index + 1} / ${pages.length}`);
+    const pageTop = cursor;
+    const available = pageTop - bottom;
+    const profiles = [
+      [11, 4, 6, 7],
+      [10.5, 3.5, 5, 6],
+      [10, 3, 5, 6],
+      [9.5, 2.5, 4, 5],
+      [9, 2, 4, 4, 1, true],
+      [8.5, 1.5, 3, 4, .88, true],
+    ];
+    let layout;
+    let sheets;
+    let scale = 1;
+    for (const metrics of profiles) {
+      layout = buildLayout(...metrics);
+      sheets = paginate(layout, available);
+      if (sheets.length <= 2) break;
+    }
+    if (sheets.length > 2) {
+      // Preserve text in exceptional records by scaling the body into the same two A4 pages.
+      const compact = profiles.at(-1);
+      do {
+        scale /= 1.05;
+        layout = buildLayout(...compact, boxWidth / scale);
+        sheets = paginate(layout, available / scale);
+      } while (sheets.length > 2);
+    }
+
+    sheets.forEach((blocks, index) => {
+      if (index > 0) addPage();
+      if (scale < 1) {
+        page.pushOperators(pushGraphicsState(), concatTransformationMatrix(
+          scale, 0, 0, scale, margin * (1 - scale), pageTop * (1 - scale),
+        ));
+      }
+      blocks.forEach(block => drawSection(block, layout));
+      if (scale < 1) page.pushOperators(popGraphicsState());
+      drawFooter(`${school.fullName} · Secretaria`, `${index + 1} / ${sheets.length}`);
     });
     return pdf.save();
   }
@@ -355,8 +401,16 @@ export function createSchoolEnrollmentPdf(item, record, fonts, brand) {
   const schoolSections = extraSections.map(({ title, fields }) => {
     const rows = [];
     let pair = [];
-    for (const { name, label, wide } of visibleEnrollmentFields(fields, values)) {
-      if (wide) {
+    const visible = visibleEnrollmentFields(fields, values);
+    for (let index = 0; index < visible.length; index += 1) {
+      const { name, label, wide } = visible[index];
+      const followUp = visible[index + 1];
+      if (followUp?.name === `${name}Detail` && followUp.when?.[0] === name) {
+        if (pair.length) rows.push(pair);
+        pair = [];
+        rows.push([[label, values[name], .31], [followUp.label, values[followUp.name], .69]]);
+        index += 1;
+      } else if (wide) {
         if (pair.length) rows.push(pair);
         pair = [];
         rows.push([[label, values[name]]]);
