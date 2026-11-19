@@ -210,11 +210,11 @@ function Secretariat({ client }) {
     Promise.all([
       allRows(() => client.from('enrollment_applications')
         .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, status, created_at')
-        .eq('school_year', year).order('id')),
+        .eq('school_year', year).order('created_at').order('id')),
       allRows(() => client.from('enrollment_applications').select('school_year').order('school_year').order('id')),
     ]).then(([items, historic]) => {
       if (!active) return;
-      setRecords(items.sort((a,b) => b.created_at.localeCompare(a.created_at)));
+      setRecords(items);
       setYears([...new Set([currentSchoolYear(), currentSchoolYear() + 1, ...historic.map(item => item.school_year)])].sort((a,b) => b-a));
     }).catch(() => { if (active) setError('Não foi possível carregar as solicitações. Atualize para tentar novamente.'); })
       .finally(() => { if (active) setLoading(false); });
@@ -225,6 +225,7 @@ function Secretariat({ client }) {
   const ages = [...new Set(items.map(item => item.age).filter(value => value !== null))].sort((a,b) => a-b);
   const filtered = items.filter(item => (!status || item.status === status)
     && (!schedule || item.schedule === schedule) && (age === '' || item.age === Number(age)));
+  const screenRows = [...filtered].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const enrolled = filtered.filter(item => item.status === 'enrolled').length;
   const active = filtered.filter(item => !['enrolled','declined'].includes(item.status)).length;
   const counts = (keys, keyFor) => Object.fromEntries(keys.map(key => [key, filtered.filter(item => keyFor(item) === key).length]));
@@ -232,6 +233,15 @@ function Secretariat({ client }) {
   const bySchedule = counts(schedules, item => item.schedule);
   const byAge = counts(ages, item => item.age);
   const showing = filtered.find(item => item.id === visibleId);
+
+  function renderStudentRows(rows, showDecision) {
+    return rows.map(item => <tr key={item.id}>
+      <td>{item.child_name}</td><td>{item.age ?? '—'}</td><td>{item.schedule}</td><td>{states[item.status]}</td>
+      {showDecision && <td><button type="button" className="text-link"
+        aria-expanded={visibleId === item.id} aria-label={`Ficha de ${item.child_name}`}
+        onClick={() => setVisibleId(visibleId === item.id ? null : item.id)}>{visibleId === item.id ? 'Fechar' : 'Abrir'}</button></td>}
+    </tr>);
+  }
 
   function print(kind) {
     setReport(kind);
@@ -310,10 +320,8 @@ function Secretariat({ client }) {
         <div className="portal-table-wrap">{filtered.length ? <table>
           <caption>Solicitações no filtro</caption>
           <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th></tr></thead>
-          <tbody>{filtered.map(item => <tr key={item.id}><td>{item.child_name}</td><td>{item.age ?? '—'}</td><td>{item.schedule}</td>
-            <td>{states[item.status]}</td><td className="portal-screen"><button type="button" className="text-link"
-              aria-expanded={visibleId === item.id} aria-label={`Ficha de ${item.child_name}`}
-              onClick={() => setVisibleId(visibleId === item.id ? null : item.id)}>{visibleId === item.id ? 'Fechar' : 'Abrir'}</button></td></tr>)}</tbody>
+          <tbody className="portal-screen">{renderStudentRows(screenRows, true)}</tbody>
+          <tbody className="portal-print-rows">{renderStudentRows(filtered, false)}</tbody>
         </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
         {showing && <aside className="portal-card portal-screen">
           <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={() => setRefresh(value => value + 1)} />
