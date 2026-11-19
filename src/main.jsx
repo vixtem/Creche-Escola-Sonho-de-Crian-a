@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, ArrowRight, Heart, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
 import { school } from './school';
 import './styles.css';
 
@@ -58,9 +58,30 @@ function App() {
     <div className="topline"><span>Pequenas descobertas. Grandes começos.</span><span><span className="status-dot"/> Educação infantil · 2 a 5 anos</span></div>
     <header><div className="nav-wrap"><Brand/><nav id="main-navigation" aria-label="Menu principal" className={menu ? 'is-open' : ''}>{links.map(([label, id]) => <a key={id} href={`#${id}`} onClick={() => setMenu(false)}>{label}</a>)}<a href={school.instagram} target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>Instagram</a><a className="button small nav-contact" href="#contato" onClick={() => setMenu(false)}>Vamos conversar <ArrowUpRight size={17}/></a></nav><button className="menu-toggle" aria-label={menu ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>{menu ? <X/> : <Menu/>}</button></div></header>
     <main id="conteudo">
-      <section id="inicio" className="hero section-wrap">
-        <div className="hero-copy"><span className="eyebrow"><span className="little-line"/> UM COMEÇO CHEIO DE POSSIBILIDADES</span><h1>Pequenos passos.<br/><span className="hero-accent">Descobertas</span><br/><span className="highlight">gigantes<svg viewBox="0 0 400 20" aria-hidden="true"><path d="M5 12Q180-3 390 10M35 19Q180 7 340 16"/></svg></span><span className="coral">.</span></h1><p>Uma infância com espaço para brincar,<br className="desktop-break"/> imaginar e crescer. Cada criança, um universo<br className="desktop-break"/> inteiro de possibilidades.</p><div className="hero-actions"><a className="button" href="./pre-matricula.html">Fazer pré-matrícula <ArrowUpRight size={19}/></a><a className="text-link" href="#contato">Quero conhecer a escola <ArrowRight size={18}/></a></div><div className="hero-footnote"><Heart size={17}/><span>Para crianças de <strong>2 a 5 anos</strong>. Para uma infância inteira.</span></div></div>
-        <div className="hero-visual"><div className="photo-outline"/><img className="hero-photo" src={asset('festa-anos-80-capa.webp')} width="360" height="640" fetchPriority="high" alt="Criança de vestido branco na festa anos 80 da escola"/><span className="photo-tag"><span className="tag-sun">✳</span> Ser criança é uma descoberta diária.</span><div className="round-stamp"><span>BRINCAR É</span><Heart fill="currentColor" size={26}/><span>COISA SÉRIA</span></div><Flower className="hero-flower"/><svg className="hero-doodle" viewBox="0 0 100 100" aria-hidden="true"><path d="M14 70Q70 10 82 50q-1 22-27 6t-5-38M83 13l-3 16 16-5"/></svg></div>
+      <section id="inicio" className="home-banner section-wrap" aria-labelledby="home-title">
+        <div className="home-banner-copy">
+          <span className="eyebrow">Educação infantil · 2 a 5 anos</span>
+          <h1 id="home-title">Pequenos passos.<br/><span>Descobertas gigantes.</span></h1>
+          <p>Uma infância com espaço para brincar, imaginar e crescer.</p>
+          <a className="text-link" href="#contato">Conheça a escola <ArrowRight size={18} aria-hidden="true" /></a>
+        </div>
+        <img
+          className="home-banner-photo"
+          src={asset('festa-anos-80-capa.webp')}
+          width="360"
+          height="640"
+          fetchPriority="high"
+          alt="Criança de vestido branco na festa anos 80 da escola"
+        />
+      </section>
+      <section className="home-enrollment section-wrap" aria-labelledby="enrollment-banner-title">
+        <a className="home-enrollment-link" href="./portal.html">
+          <div>
+            <h2 id="enrollment-banner-title">Pré-matrícula</h2>
+            <p>Entre no Portal da Família para fazer a pré-matrícula ou acompanhar sua solicitação.</p>
+          </div>
+          <span>Acessar Portal da Família <ArrowUpRight size={19} aria-hidden="true" /></span>
+        </a>
       </section>
       <div className="values-ribbon" aria-label="Valores que inspiram este projeto"><div><span>Aprender brincando</span><Sparkles/><span>Crescer com afeto</span><Sparkles/><span>Imaginar sem limites</span><Sparkles/><span>Descobrir o mundo</span><Sparkles/></div></div>
       <section id="vivencias" className="section-wrap section-space experiences">
