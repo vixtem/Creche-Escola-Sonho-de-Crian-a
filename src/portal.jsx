@@ -58,22 +58,35 @@ function Family({ client, user }) {
   const [children, setChildren] = useState(null);
   const [applications, setApplications] = useState([]);
   const [error, setError] = useState('');
+  const loadId = useRef(0);
 
-  async function load() {
-    const [profiles, requests] = await Promise.all([
-      allRows(() => client.from('enrollment_children').select('id, full_name, birth_date').order('id')),
-      allRows(() => client.from('enrollment_applications')
-        .select('id, child_id, protocol, child_name, schedule, unit, school_year, status').eq('guardian_id', user.id).order('id')),
-    ]);
-    setChildren(profiles.sort((a, b) => a.full_name.localeCompare(b.full_name, 'pt-BR')));
-    setApplications(requests.sort((a, b) => b.school_year - a.school_year));
+  async function refresh() {
+    const id = ++loadId.current;
+    try {
+      const [profiles, requests] = await Promise.all([
+        allRows(() => client.from('enrollment_children').select('id, full_name, birth_date').order('id')),
+        allRows(() => client.from('enrollment_applications')
+          .select('id, child_id, protocol, child_name, schedule, unit, school_year, status').eq('guardian_id', user.id).order('id')),
+      ]);
+      if (id !== loadId.current) return;
+      setError('');
+      setChildren(profiles.sort((a, b) => a.full_name.localeCompare(b.full_name, 'pt-BR')));
+      setApplications(requests.sort((a, b) => b.school_year - a.school_year));
+    } catch {
+      if (id === loadId.current) setError('Não foi possível carregar as fichas. Tente atualizar.');
+    }
   }
-
-  function refresh() {
-    setError('');
-    load().catch(() => setError('Não foi possível carregar as fichas. Tente atualizar.'));
-  }
-  useEffect(refresh, [client, user.id]);
+  useEffect(() => {
+    refresh();
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const timer = window.setInterval(refreshWhenVisible, 30000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      ++loadId.current;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [client, user.id]);
 
   return <>
     <div className="portal-stack-head"><h2>Minhas crianças</h2>
@@ -86,7 +99,9 @@ function Family({ client, user }) {
     {children?.length === 0 && <p>Cadastre uma criança para enviar e acompanhar a pré-matrícula.</p>}
     {children?.map(child => {
       const requests = applications.filter(item => item.child_id === child.id);
-      const hasCurrentRequest = requests.some(item => item.school_year === enrollmentYear);
+      const currentRequest = requests.find(item => item.school_year === enrollmentYear);
+      const actionLabel = currentRequest?.status === 'documents' ? 'Preencher matrícula'
+        : currentRequest ? 'Editar pré-matrícula' : 'Preencher pré-matrícula';
       return <article className="portal-card portal-family-card" key={child.id}>
         <div className="portal-family-card-head">
           <div>
@@ -94,7 +109,7 @@ function Family({ client, user }) {
             <p>Nascimento em {formatDate(child.birth_date)}</p>
           </div>
           <a className="button" href={`./pre-matricula.html?crianca=${encodeURIComponent(child.id)}`}>
-            {hasCurrentRequest ? 'Editar pré-matrícula' : 'Preencher pré-matrícula'}
+            {actionLabel}
           </a>
         </div>
         {requests.length === 0 && <p className="portal-family-request">Pré-matrícula ainda não enviada.</p>}

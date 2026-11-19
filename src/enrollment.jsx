@@ -4,12 +4,23 @@ import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
 import { sections, ageOnDate, enrollmentYear } from './enrollment-fields';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
-import { dateInSchool, getPortalClient } from './portal-api';
+import { allRows, dateInSchool, getPortalClient } from './portal-api';
 import './styles.css';
 import './enrollment.css';
 
 const onlineFields = ['child', 'birth', 'schedule', 'guardian', 'relationship', 'phone', 'unit'];
 const formFields = sections.flatMap(section => section.fields).filter(field => field.type !== 'age' && !field.readOnly);
+const schoolPdfStatuses = ['documents', 'approved', 'enrolled'];
+
+async function readEnrollmentProgress(client, application) {
+  if (!application) return { schoolPdf: false, instructions: '' };
+  const history = await allRows(() => client.from('enrollment_history').select('id, status, family_message')
+    .eq('application_id', application.id).order('id', { ascending: false }));
+  return {
+    schoolPdf: schoolPdfStatuses.includes(application.status) || history.some(item => schoolPdfStatuses.includes(item.status)),
+    instructions: history.find(item => item.status === 'documents')?.family_message || '',
+  };
+}
 
 function draftKey(portal) {
   return `cesc-enrollment-draft-v1:${portal.user.id}:${portal.child?.id ?? 'new'}:${enrollmentYear}`;
@@ -104,6 +115,8 @@ function Enrollment() {
   const [sendError, setSendError] = useState('');
   const [reload, setReload] = useState(0);
   const { application } = portal;
+  const isEnrollment = application?.status === 'documents';
+  const schoolPdf = portal.progress?.schoolPdf;
 
   function openApplication(context) {
     const item = context.application;
@@ -150,12 +163,13 @@ function Enrollment() {
       const [{ data: child, error }, { data: application, error: applicationError }] = await Promise.all([
         client.from('enrollment_children').select('id, full_name, birth_date').eq('id', requestedChild).maybeSingle(),
         client.from('enrollment_applications')
-          .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, schedule, unit, created_at, updated_at')
+          .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, schedule, unit, status, created_at, updated_at')
           .eq('child_id', requestedChild).eq('guardian_id', session.user.id).eq('school_year', enrollmentYear).maybeSingle(),
       ]);
       if (error || applicationError || !child) throw new Error();
+      const progress = await readEnrollmentProgress(client, application);
       if (!active) return;
-      const context = { client, child, application, user: session.user, notice: '' };
+      const context = { client, child, application, progress, user: session.user, notice: '' };
       openApplication(context);
       setPortal(context);
     }).catch(() => {
@@ -170,7 +184,7 @@ function Enrollment() {
       writeDraft(portal, draft, photo);
       setDraftError('');
     } catch {
-      setDraftError('O navegador não conseguiu guardar o rascunho neste dispositivo. Baixe o PDF para guardar uma cópia.');
+      setDraftError('O navegador não conseguiu guardar o rascunho neste dispositivo.');
     }
   }, [portal, draft, photo]);
 
@@ -207,7 +221,7 @@ function Enrollment() {
 
   async function download(event) {
     event.preventDefault();
-    if (photoLoading) return;
+    if (photoLoading || schoolPdf || busy || sending) return;
     const form = event.currentTarget;
     const blank = [...form.elements].find(field => field.required && !field.value.trim());
     if (blank) {
@@ -219,6 +233,16 @@ function Enrollment() {
     setBusy(true);
     setStatus('');
     try {
+      if (portal.child) {
+        const { data: current, error } = await portal.client.from('enrollment_applications').select('id, status')
+          .eq('child_id', portal.child.id).eq('school_year', enrollmentYear).maybeSingle();
+        if (error || (application && !current)) throw error ?? new Error();
+        const progress = await readEnrollmentProgress(portal.client, current);
+        if (progress.schoolPdf) {
+          setPortal(value => ({ ...value, application: { ...value.application, ...current }, progress }));
+          return;
+        }
+      }
       const { downloadEnrollmentPdf } = await import('./enrollment-download');
       await downloadEnrollmentPdf(answers, photo);
       setStatus('PDF gerado. Guarde o arquivo para apresentar à secretaria.');
@@ -312,12 +336,14 @@ function Enrollment() {
         <div className="enrollment-intro">
           <img className="enrollment-logo" src={`${import.meta.env.BASE_URL}images/marca-cesc.png`} width="600" height="365" alt="" />
           <p className="enrollment-school">{school.fullName}</p>
-          <h1>Ficha de pré-matrícula {enrollmentYear}</h1>
+          <h1>{isEnrollment ? 'Ficha de matrícula' : 'Ficha de pré-matrícula'} {enrollmentYear}</h1>
           <p>Educação Infantil · {school.ageRange}</p>
         </div>
         <p className="enrollment-privacy"><ShieldCheck aria-hidden="true" size={21} />
           <span>{portal.client?.demo
             ? 'Modo de teste. Use apenas dados fictícios. A pré-matrícula de teste fica nesta aba e não é enviada à escola.'
+            : schoolPdf
+            ? 'O PDF é de responsabilidade da escola. Sexo, endereço e foto ficam no rascunho deste navegador.'
             : portal.user
             ? 'Sexo, endereço e foto ficam no rascunho deste navegador e podem ser incluídos no PDF.'
             : 'Entre no Portal da Família e abra a ficha pelo cadastro da criança.'}</span>
@@ -327,6 +353,9 @@ function Enrollment() {
         </a>
         {portal.notice && <p role="status">{portal.notice}</p>}
         {draftError && <p role="status">{draftError}</p>}
+        {isEnrollment && portal.progress?.instructions && <div className="enrollment-privacy">
+          <div><strong>Orientações da Secretaria</strong><div>{portal.progress.instructions}</div></div>
+        </div>}
         {!portal.loading && portal.user && <form onSubmit={download} autoComplete="off">
           {sections.map(({ title, fields }) => (
             <fieldset key={title} className="enrollment-section" disabled={sending}>
@@ -339,10 +368,10 @@ function Enrollment() {
             </fieldset>
           ))}
           <fieldset className="enrollment-section enrollment-submit">
-            <legend>{application ? 'Atualizar pré-matrícula' : 'Enviar à secretaria'}</legend>
+            <legend>{isEnrollment ? 'Dados da matrícula' : application ? 'Atualizar pré-matrícula' : 'Enviar à secretaria'}</legend>
             <p>A secretaria recebe nome e nascimento da criança, modalidade, unidade e dados do responsável.</p>
             <button className="button" type="button" disabled={sending || photoLoading} onClick={send}>
-              {sending ? 'Salvando…' : application ? 'Salvar alterações' : 'Enviar pré-matrícula'}
+              {sending ? 'Salvando…' : isEnrollment ? 'Salvar dados da matrícula' : application ? 'Salvar alterações' : 'Enviar pré-matrícula'}
             </button>
             {portal.child && !application && <button className="text-link" type="button" disabled={sending} onClick={event => send(event, true)}>
               Salvar dados da criança
@@ -350,19 +379,20 @@ function Enrollment() {
             {sendError && <div role="alert"><p>{sendError}</p>{sendError.startsWith('Esta ficha foi atualizada') &&
               <button className="text-link" type="button" onClick={() => setReload(value => value + 1)}>Recarregar ficha</button>}</div>}
             {sent && <div role="status">
-              <p>{sent.profileOnly ? 'Dados da criança salvos.' : sent.created ? 'Pré-matrícula recebida.' : 'Alterações salvas.'}</p>
+              <p>{sent.profileOnly ? 'Dados da criança salvos.' : sent.created ? 'Pré-matrícula recebida.'
+                : isEnrollment ? 'Dados salvos. A confirmação da matrícula é feita pela Secretaria.' : 'Alterações salvas.'}</p>
               {sent.protocol && <>
                 <p>Protocolo <strong>{sent.protocol}</strong></p>
                 <a className="text-link" href="./portal.html">Acompanhar solicitação</a>
               </>}
             </div>}
           </fieldset>
-          <div className="enrollment-actions">
+          {!schoolPdf && <div className="enrollment-actions">
             <button className="button" type="submit" disabled={busy || photoLoading || sending}>
               <Download aria-hidden="true" size={19} /> {busy ? 'Gerando PDF…' : 'Baixar ficha em PDF'}
             </button>
             <p role="status">{status}</p>
-          </div>
+          </div>}
         </form>}
       </div>
     </main>
