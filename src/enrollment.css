@@ -111,7 +111,7 @@
 .enrollment-field textarea { resize: vertical; }
 .enrollment-detail { margin-top: 10px; }
 .enrollment-actions .button { min-height: 48px; gap: 10px; font-size: 15px; }
-.enrollment-actions .button:disabled { opacity: .7; cursor: wait; }
+.enrollment-actions .button:disabled { cursor: wait; }
 .enrollment-actions p { margin-top: 8px; }
 
 @media (max-width: 550px) {
