@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
+import { ArrowUpRight, Sparkles, Menu, X, ChevronDown, Check, Copy, Instagram, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
 import { school } from './school';
 import './styles.css';
 
@@ -134,8 +134,9 @@ function App() {
             </button>
           ))}
         </div>
-        <a className="text-link experience-instagram" href={school.instagram} target="_blank" rel="noreferrer">
-          Mais registros no Instagram <ArrowUpRight size={17} aria-hidden="true" />
+        <a className="experience-instagram" href={school.instagram} target="_blank" rel="noreferrer">
+          <Instagram size={22} aria-hidden="true" />
+          Mais registros no Instagram
         </a>
       </section>
       <SchoolUnits />
