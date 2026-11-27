@@ -1,4 +1,5 @@
 export const enrollmentYear = 2027;
+export const childSexOptions = ['Feminino', 'Masculino'];
 
 export const studyModes = {
   'Tempo Parcial (Matutino)': 'Manhã',
@@ -18,7 +19,7 @@ export const sections = [
       { name: 'child', label: 'Nome completo da criança', limit: 120, wide: true },
       { name: 'birth', label: 'Data de nascimento', type: 'date' },
       { name: 'age', label: 'Idade', type: 'age' },
-      { name: 'sex', label: 'Sexo', options: ['Feminino', 'Masculino', 'Prefiro não informar'] },
+      { name: 'sex', label: 'Sexo', options: childSexOptions },
       { name: 'cep', label: 'CEP', limit: 9, optional: true, autoComplete: 'section-crianca postal-code' },
       { name: 'address', label: 'Endereço completo', limit: 180, wide: true },
       { name: 'district', label: 'Bairro', limit: 80, wide: true },

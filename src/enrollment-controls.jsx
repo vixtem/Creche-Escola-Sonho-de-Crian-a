@@ -1,7 +1,7 @@
 import React from 'react';
 import { dateInSchool } from './portal-api';
 
-export function Field({ field, values, update }) {
+export function Field({ field, values, update, fieldStatus }) {
   const { name, label, options, type = 'text', limit, optional, wide, autoComplete, readOnly, min, max } = field;
   const value = values[name] || '';
   const id = `enrollment-${name}`;
@@ -28,8 +28,10 @@ export function Field({ field, values, update }) {
           max={type === 'date' ? dateInSchool() : max}
           pattern={name === 'cep' ? '[0-9]{5}(?:-| )?[0-9]{3}' : undefined}
           inputMode={name === 'cep' ? 'numeric' : undefined}
-          placeholder={name === 'cep' ? '00000-000' : undefined} />
+          placeholder={name === 'cep' ? '00000-000' : undefined}
+          aria-describedby={fieldStatus === undefined ? undefined : `${id}-status`} />
       )}
+      {fieldStatus !== undefined && <p className="enrollment-field-status" id={`${id}-status`} role="status">{fieldStatus}</p>}
     </div>
   );
 }

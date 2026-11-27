@@ -107,6 +107,9 @@
   font-size: 16px;
 }
 
+.enrollment-field-status { margin-top: 5px; font-size: 13px; }
+.enrollment-field-status:empty { display: none; }
+
 .enrollment-field output { background: #f4f8f9; }
 .enrollment-field textarea { resize: vertical; }
 .enrollment-detail { margin-top: 10px; }

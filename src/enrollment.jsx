@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
-import { sections, ageOnDate, enrollmentYear } from './enrollment-fields';
+import { sections, ageOnDate, childSexOptions, enrollmentYear } from './enrollment-fields';
 import { combineLegacyAddress, enrollmentAddressFields, enrollmentDeclaration, enrollmentDetailsSections, enrollmentHours, imageConsentScope, visibleEnrollmentFields } from './enrollment-details';
 import { Field, PhotoField } from './enrollment-controls';
+import { formatCep, lookupCepAddress } from './enrollment-cep.js';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
 import { allRows, dateInSchool, getPortalClient } from './portal-api';
 import './styles.css';
@@ -64,6 +65,10 @@ function Enrollment() {
   });
   const [draft, setDraft] = useState({});
   const [draftError, setDraftError] = useState('');
+  const [cepStatus, setCepStatus] = useState('');
+  const [cepLoading, setCepLoading] = useState(false);
+  const cepRequest = useRef(null);
+  const cepFilledFields = useRef({});
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(null);
   const [sendError, setSendError] = useState('');
@@ -91,7 +96,7 @@ function Enrollment() {
     setDraft(restored);
     setPhoto(Object.hasOwn(saved, 'photo') && (revisionMatches || !context.photoSaved)
       ? saved.photo : context.savedPhoto ?? null);
-    setValues({
+    const initialValues = {
       child: item?.child_name ?? context.child?.full_name ?? '',
       birth: item?.birth_date ?? context.child?.birth_date ?? '',
       email: context.user.email,
@@ -100,7 +105,12 @@ function Enrollment() {
       consentName: item?.guardian_name ?? '',
       ...details,
       ...restored,
-    });
+    };
+    if (!childSexOptions.includes(initialValues.sex)) initialValues.sex = '';
+    setValues(initialValues);
+    cepFilledFields.current = {};
+    setCepStatus('');
+    setCepLoading(false);
     setSent(null);
     setStatus('');
     setPhotoError('');
@@ -149,7 +159,11 @@ function Enrollment() {
     }).catch(() => {
       if (active) setPortal({ client: null, child: null, notice: 'Cadastro indisponível nesta sessão. Abra a ficha pelo Portal da família para enviar à escola.' });
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      cepRequest.current?.controller.abort();
+      cepRequest.current = null;
+    };
   }, [reload]);
 
   useEffect(() => {
@@ -182,11 +196,71 @@ function Enrollment() {
     }
   }
 
-  function update(name, value) {
-    setValues(current => ({ ...current, [name]: value }));
-    if (formFields.some(field => field.name === name)) setDraft(current => ({ ...current, [name]: value }));
+  function updateFields(changes) {
+    setValues(current => ({ ...current, ...changes }));
+    const draftChanges = Object.fromEntries(formFields
+      .filter(({ name }) => Object.hasOwn(changes, name))
+      .map(({ name }) => [name, changes[name]]));
+    if (Object.keys(draftChanges).length) setDraft(current => ({ ...current, ...draftChanges }));
     setStatus('');
     setSent(null);
+  }
+
+  async function findAddress(cep) {
+    cepRequest.current?.controller.abort();
+    cepRequest.current = null;
+    setCepStatus('');
+    setCepLoading(cep.length === 9);
+    if (cep.length !== 9) return;
+
+    const controller = new AbortController();
+    const fields = new Set(['address', 'district'].filter(name => (
+      !values[name]?.trim() || values[name] === cepFilledFields.current[name]
+    )));
+    const request = { controller, fields };
+    cepRequest.current = request;
+    setCepStatus('Consultando CEP…');
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const result = await lookupCepAddress(cep, controller.signal);
+      if (cepRequest.current !== request) return;
+      if (!result) {
+        setCepStatus('CEP não encontrado. Confira o número ou preencha o endereço manualmente.');
+        return;
+      }
+      const changes = Object.fromEntries([...fields].flatMap(name => {
+        const value = result[name] || (Object.hasOwn(cepFilledFields.current, name) ? '' : undefined);
+        return value === undefined ? [] : [[name, value]];
+      }));
+      if (Object.keys(changes).length) {
+        Object.assign(cepFilledFields.current, changes);
+        updateFields(changes);
+      }
+      setCepStatus(result.partial
+        ? 'CEP encontrado. Complete os dados que faltam no endereço e no bairro.'
+        : 'CEP encontrado. Confira o endereço e acrescente o número e o complemento, se houver.');
+    } catch {
+      if (cepRequest.current === request) {
+        setCepStatus('Não foi possível consultar o CEP agora. Preencha o endereço manualmente.');
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (cepRequest.current === request) {
+        cepRequest.current = null;
+        setCepLoading(false);
+      }
+    }
+  }
+
+  function update(name, value) {
+    if (name === 'cep') {
+      value = formatCep(value);
+      if (value !== values.cep) findAddress(value);
+    } else if (name === 'address' || name === 'district') {
+      cepRequest.current?.fields.delete(name);
+      delete cepFilledFields.current[name];
+    }
+    updateFields({ [name]: value });
   }
 
   const birthDate = values.birth;
@@ -195,7 +269,7 @@ function Enrollment() {
 
   async function download(event) {
     event.preventDefault();
-    if (photoLoading || schoolPdf || busy || sending) return;
+    if (photoLoading || schoolPdf || busy || sending || cepLoading) return;
     const form = event.currentTarget;
     const blank = [...form.elements].find(field => field.required && !field.value.trim());
     if (blank) {
@@ -229,7 +303,7 @@ function Enrollment() {
 
   async function send(event) {
     const form = event.currentTarget.form;
-    if (sending) return;
+    if (sending || cepLoading) return;
     const extraFields = isEnrollment ? enrollmentDetailsSections.flatMap(section => visibleEnrollmentFields(section.fields, values)) : [];
     const fields = [...formFields, ...extraFields];
     for (const { name, optional } of fields) {
@@ -344,7 +418,8 @@ function Enrollment() {
               <legend>{title}</legend>
               {title === 'Autorização de uso de imagem' && <p>{imageConsentScope}</p>}
               <div className="enrollment-grid">
-                {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={field} values={answers} update={update} />)}
+                {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={field} values={answers} update={update}
+                  fieldStatus={field.name === 'cep' ? cepStatus : undefined} />)}
                 {fields[0].name === 'child' &&
                   <PhotoField photo={photo} error={photoError} loading={photoLoading} onChange={changePhoto} />}
               </div>
@@ -362,7 +437,7 @@ function Enrollment() {
             <legend>{isEnrollment ? 'Dados da matrícula' : application ? 'Atualizar pré-matrícula' : 'Enviar à secretaria'}</legend>
             <p>{isEnrollment ? 'A Secretaria recebe todos os dados da ficha para conferência.'
               : 'A Secretaria recebe os dados da pré-matrícula e a foto 3×4, se enviada.'}</p>
-            <button className="button" type="button" disabled={sending || photoLoading} onClick={send}>
+            <button className="button" type="button" disabled={sending || photoLoading || cepLoading} onClick={send}>
               {sending ? 'Salvando…' : isEnrollment ? 'Salvar dados da matrícula' : application ? 'Salvar alterações' : 'Enviar pré-matrícula'}
             </button>
             {sendError && <div role="alert"><p>{sendError}</p>{sendError.startsWith('Esta ficha foi atualizada') &&
@@ -377,7 +452,7 @@ function Enrollment() {
             </div>}
           </fieldset>
           {!schoolPdf && <div className="enrollment-actions">
-            <button className="button" type="submit" disabled={busy || photoLoading || sending}>
+            <button className="button" type="submit" disabled={busy || photoLoading || sending || cepLoading}>
               <Download aria-hidden="true" size={19} /> {busy ? 'Gerando PDF…' : 'Baixar ficha em PDF'}
             </button>
             <p role="status">{status}</p>
