@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LogOut, Printer } from 'lucide-react';
-import { ageOnDate, enrollmentYear, schoolUnits, studyModes } from './enrollment-fields';
+import { ageOnDate, enrollmentAgeRequirement, enrollmentBirthRange, enrollmentYear, isEnrollmentBirthDate, schoolUnits, studyModes } from './enrollment-fields';
 import { combineLegacyAddress, enrollmentHours, staffEnrollmentSections, visibleEnrollmentFields } from './enrollment-details';
 import { Field, PhotoField } from './enrollment-controls';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
@@ -21,10 +21,9 @@ const secretariatTabs = [
   { id: 'students', label: 'Alunos' },
 ];
 const historyFields = 'id, status, family_message, changed_at';
-const today = dateInSchool();
 const sheetFields = [
   { name: 'child_name', base: 'child', label: 'Nome completo da criança', input: { maxLength: 120 } },
-  { name: 'birth_date', base: 'child', label: 'Data de nascimento', input: { type: 'date', min: '1900-01-01', max: today } },
+  { name: 'birth_date', base: 'child', label: 'Data de nascimento', input: { type: 'date' } },
   { name: 'schedule', label: 'Modalidade de estudo', options: studyModes },
   { name: 'unit', label: 'Unidade', options: schoolUnits, optional: true },
   { name: 'guardian_name', base: 'guardian', label: 'Nome do responsável', input: { maxLength: 120 } },
@@ -269,6 +268,10 @@ function Decision({ client, item, onSaved, readOnly }) {
 
 function EnrollmentSheet({ client, item, onCancel, onSaved, onReload }) {
   const creating = !item;
+  const schoolYear = item?.school_year ?? enrollmentYear;
+  const savedBirth = item?.birth_date;
+  const birthRange = enrollmentBirthRange(schoolYear, savedBirth);
+  const ageRequirement = enrollmentAgeRequirement(schoolYear);
   const fields = sheetFields.map(field => field.name === 'guardian_email' && (creating || !item.guardian_id)
     ? { ...field, label: 'E-mail de contato (opcional)', optional: true }
     : field.name === 'unit' && creating ? { ...field, optional: false } : field);
@@ -317,6 +320,10 @@ function EnrollmentSheet({ client, item, onCancel, onSaved, onReload }) {
       setError({ message: 'Preencha todos os campos da ficha.' });
       return;
     }
+    if (!isEnrollmentBirthDate(values.birth_date, schoolYear, savedBirth)) {
+      setError({ message: ageRequirement });
+      return;
+    }
     if (!/^\+?[0-9 ()-]+$/.test(values.guardian_phone) || !/^\d{10,13}$/.test(values.guardian_phone.replace(/\D/g, ''))) {
       setError({ message: 'Informe um telefone válido com DDD.' });
       return;
@@ -340,6 +347,7 @@ function EnrollmentSheet({ client, item, onCancel, onSaved, onReload }) {
       const messages = {
         '40001': 'A ficha mudou desde que foi aberta. Recarregue a ficha para conferir a versão atual.',
         '22023': 'Confira os dados informados na ficha.',
+        P2001: ageRequirement,
         '23505': creating
           ? 'Já existe um cadastro com o mesmo nome e data de nascimento. Confira também os alunos arquivados.'
           : 'Já existe uma criança com o mesmo nome e data de nascimento nesta conta.',
@@ -360,7 +368,9 @@ function EnrollmentSheet({ client, item, onCancel, onSaved, onReload }) {
           : { defaultValue: item?.[name] ?? '' })}>
         {(optional || creating) && <option value="">{optional ? 'Não informada' : 'Selecione'}</option>}
         {Object.entries(options).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select> : <input id={`sheet-${name}`} name={name} defaultValue={item?.[name]} {...input} required={!optional} />}
+      </select> : <input id={`sheet-${name}`} name={name} defaultValue={item?.[name]} {...input}
+        {...(name === 'birth_date' && { ...birthRange, 'aria-describedby': 'sheet-birth-age' })} required={!optional} />}
+      {name === 'birth_date' && <p id="sheet-birth-age" className="enrollment-field-status">{ageRequirement}</p>}
     </div>;
   }
 
