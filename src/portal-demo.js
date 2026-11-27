@@ -1,5 +1,5 @@
-import { currentSchoolYear, transitions } from './portal-api.js';
-import { enrollmentYear, schoolUnits } from './enrollment-fields.js';
+import { transitions } from './portal-api.js';
+import { enrollmentYear, isEnrollmentBirthDate, schoolUnits } from './enrollment-fields.js';
 
 const key = 'cesc-portal-demo-v1';
 const user = { id: 'familia-demonstracao', email: 'familia@example.test' };
@@ -8,7 +8,7 @@ const result = data => ({ data, error: null });
 const failure = code => ({ data: null, error: { code } });
 
 function seed() {
-  const child = { id: 'demo-crianca', guardian_id: user.id, full_name: 'Criança de exemplo', birth_date: `${currentSchoolYear() - 4}-01-15` };
+  const child = { id: 'demo-crianca', guardian_id: user.id, full_name: 'Criança de exemplo', birth_date: `${enrollmentYear - 4}-01-15` };
   const application = {
     id: 'demo-solicitacao', child_id: child.id, guardian_id: user.id, protocol: 'TESTE-001',
     child_name: child.full_name, birth_date: child.birth_date, guardian_name: 'Responsável de exemplo',
@@ -119,6 +119,7 @@ function editApplication(db, { p_application, p_expected_updated_at, ...fields }
   const application = db.enrollment_applications.find(row => row.id === p_application);
   if (!application) return failure('P0002');
   if ((application.updated_at || application.created_at) !== p_expected_updated_at) return failure('40001');
+  if (!isEnrollmentBirthDate(fields.p_birth_date, fields.p_school_year, application.birth_date)) return failure('P2001');
   if (db.enrollment_applications.some(row => row.id !== application.id && row.child_id === application.child_id
     && row.school_year === fields.p_school_year)) return failure('23505');
   for (const name of ['child_name', 'birth_date', 'school_year', 'schedule', 'guardian_name', 'guardian_relationship', 'guardian_phone', 'guardian_email']) {
@@ -135,6 +136,7 @@ function saveFamilyEnrollment(db, params) {
   if (!child) return failure('42501');
   const previous = db.enrollment_applications.find(row => row.child_id === child.id && row.school_year === enrollmentYear);
   if ((previous?.updated_at ?? previous?.created_at ?? null) !== params.p_expected_updated_at) return failure('40001');
+  if (!isEnrollmentBirthDate(params.p_birth_date, enrollmentYear, previous?.birth_date)) return failure('P2001');
   if (!previous || previous.child_name !== params.p_child_name || previous.birth_date !== params.p_birth_date) {
     child.full_name = params.p_child_name;
     child.birth_date = params.p_birth_date;
