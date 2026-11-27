@@ -20,9 +20,12 @@ function Brand({ footer = false }) {
   );
 }
 const experiences = [
-  { image: 'festa-anos-80-dupla.webp', label: 'Duas crianças fantasiadas no tapete colorido da festa anos 80' },
-  { image: 'festa-anos-80-oculos.webp', label: 'Criança de óculos brancos diante do painel do Dia das Crianças' },
-  { image: 'festa-anos-80-bandana.webp', label: 'Criança de bandana vermelha e jaqueta jeans no cenário da festa' },
+  { image: 'roda-no-parque.webp', width: 1536, height: 1198, label: 'Crianças de mãos dadas em roda no parque' },
+  { image: 'turma-na-sala.webp', width: 1536, height: 1109, label: 'Turma reunida com a professora e materiais de aprendizagem' },
+  { image: 'formatura-abc.webp', width: 1536, height: 1149, label: 'Três crianças com becas vermelhas na formatura do ABC' },
+  { image: 'bale-no-palco.webp', width: 1536, height: 1489, label: 'Grupo de balé com figurinos vermelhos e brancos' },
+  { image: 'danca-com-pompons.webp', width: 1536, height: 1481, label: 'Apresentação de dança com figurinos coloridos e pompons' },
+  { image: 'grupo-com-vestidos-amarelos.webp', width: 1239, height: 1536, label: 'Crianças de vestido amarelo e equipe reunidas ao ar livre' },
 ];
 
 function Flower({ className = '' }) {
@@ -113,18 +116,18 @@ function App() {
             <span className="eyebrow">Vivências</span>
             <h2>É brincando que o<br/>mundo fica <span className="coral-text">maior.</span></h2>
           </div>
-          <p>Festa anos 80 na Creche Escola Sonho de Criança</p>
+          <p>Brincadeiras, aprendizados e apresentações da escola</p>
         </div>
         <div className="experience-grid">
-          {experiences.map(({ image, label }) => (
+          {experiences.map(photo => (
             <button
-              key={image}
+              key={photo.image}
               className="experience-card"
-              onClick={event => { openerRef.current = event.currentTarget; setGallery({ image, label }); }}
-              aria-label={`Ampliar imagem: ${label}`}
+              onClick={event => { openerRef.current = event.currentTarget; setGallery(photo); }}
+              aria-label={`Ampliar imagem: ${photo.label}`}
             >
               <span className="experience-photo">
-                <img src={asset(image)} width="360" height="640" loading="lazy" alt="" />
+                <img src={asset(photo.image)} width={photo.width} height={photo.height} loading="lazy" alt="" />
                 <span className="expand-icon"><MoveUpRight size={20} aria-hidden="true" /></span>
               </span>
             </button>
@@ -135,11 +138,11 @@ function App() {
         </a>
       </section>
       <SchoolUnits />
-      <section className="faq-section section-wrap section-space"><div><span className="eyebrow">PARA AS FAMÍLIAS</span><h2>Uma boa conversa<br/>é o primeiro passo.</h2><p>Reunimos algumas informações para<br/>começar a conhecer a escola.</p><Flower className="faq-flower"/></div><div className="faq-list">{[['Qual a faixa etária da escola?','Este projeto apresenta a Creche Escola Sonho de Criança para famílias com crianças de 2 a 5 anos. A distribuição das turmas deve ser confirmada com a secretaria.'],['Como conhecer a escola?','Use a seção de contato para preparar sua mensagem de interesse. O contato oficial da secretaria será incluído assim que for confirmado.'],['Quais são os horários e turnos?','Os horários de funcionamento e os turnos disponíveis ainda serão informados pela direção. Assim que confirmados, estarão disponíveis aqui.'],['Estas são fotos reais da escola?','Sim. As imagens mostram crianças da escola na festa anos 80 e foram publicadas no Instagram oficial.']].map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={20}/></summary><p>{answer}</p></details>)}</div></section>
+      <section className="faq-section section-wrap section-space"><div><span className="eyebrow">PARA AS FAMÍLIAS</span><h2>Uma boa conversa<br/>é o primeiro passo.</h2><p>Reunimos algumas informações para<br/>começar a conhecer a escola.</p><Flower className="faq-flower"/></div><div className="faq-list">{[['Qual a faixa etária da escola?','Este projeto apresenta a Creche Escola Sonho de Criança para famílias com crianças de 2 a 5 anos. A distribuição das turmas deve ser confirmada com a secretaria.'],['Como conhecer a escola?','Use a seção de contato para preparar sua mensagem de interesse. O contato oficial da secretaria será incluído assim que for confirmado.'],['Quais são os horários e turnos?','Os horários de funcionamento e os turnos disponíveis ainda serão informados pela direção. Assim que confirmados, estarão disponíveis aqui.'],['O que aparece na galeria de Vivências?','A galeria reúne fotos de brincadeiras no parque, atividades em sala, formatura e apresentações de dança.']].map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={20}/></summary><p>{answer}</p></details>)}</div></section>
       <section id="contato" className="contact-section"><div className="section-wrap contact-layout"><div><span className="eyebrow">VAMOS NOS CONHECER?</span><h2>Todo grande sonho<br/>começa com um<br/><span>pequeno olá.</span></h2><p>Conte em qual fase sua criança está.<br/>Vamos preparar o começo dessa conversa.</p><div className="contact-info"><span><MapPin size={18}/>{school.address || 'Endereço em atualização'}</span><span><Clock size={18}/>{school.hours || 'Horários a confirmar com a secretaria'}</span></div></div><div className="contact-form-wrap"><h3>O primeiro passo é seu.</h3><p className="form-intro">Prepare uma mensagem para a secretaria.</p><form onSubmit={prepareContact}><label htmlFor="name">Seu nome</label><input id="name" name="name" placeholder="Como podemos chamar você?" required maxLength={100} autoComplete="given-name" onChange={() => setSubmitted(false)}/><label htmlFor="age">Idade da criança</label><select id="age" name="age" required defaultValue="" onChange={() => setSubmitted(false)}><option value="" disabled>Selecione a idade</option>{[2,3,4,5].map(a => <option key={a} value={a}>{a} anos</option>)}</select><label htmlFor="note">Quer contar algo mais? <span>(opcional)</span></label><textarea id="note" name="note" placeholder="Uma dúvida ou o que você gostaria de conhecer…" maxLength={800} rows={2} onChange={() => setSubmitted(false)}/><button className="button" type="submit">Preparar minha mensagem <ArrowUpRight size={18}/></button><p className="form-note">Nenhum dado é enviado ou salvo por este formulário.</p></form>{submitted && <div className="message-result" role="status"><strong>Mensagem pronta!</strong><textarea aria-label="Mensagem preparada para copiar" readOnly value={message} rows={4}/>{school.whatsapp ? <a className="text-link" href={`https://wa.me/${school.whatsapp}?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer"><MessageCircle size={18}/> Continuar no WhatsApp</a> : <><p>O WhatsApp oficial ainda será cadastrado. Você pode copiar a mensagem, mas ela ainda não foi enviada.</p><button className="text-link" onClick={copyMessage}>{copied ? <Check size={17}/> : <Copy size={17}/>} {copied ? 'Mensagem copiada' : 'Copiar mensagem'}</button></>}</div>}</div></div></section>
     </main>
     <footer className="section-wrap"><div className="footer-top"><Brand footer/><span>Infância para viver.<br/><strong>Sonhos para levar.</strong></span><a href="#inicio" className="back-top">Voltar ao topo <ArrowUpRight size={19}/></a></div><div className="footer-bottom"><span>© {new Date().getFullYear()} {school.fullName}.</span><span>Primeira versão · Conteúdo institucional em validação</span><a href="./portal.html">Portal da família</a><a href="./portal.html?area=secretaria">Secretaria</a><a href="#contato">Fale com a escola</a><a href={school.instagram} target="_blank" rel="noreferrer">Instagram</a></div></footer>
-    {gallery !== null && <div className="lightbox" role="dialog" aria-modal="true" aria-label="Imagem ampliada" onClick={() => setGallery(null)}><button ref={closeRef} className="lightbox-close" aria-label="Fechar imagem" onClick={() => setGallery(null)}><X/></button><div className="lightbox-content" onClick={e => e.stopPropagation()}><img src={asset(gallery.image)} width="360" height="640" alt={gallery.label} /></div></div>}
+    {gallery !== null && <div className="lightbox" role="dialog" aria-modal="true" aria-label="Imagem ampliada" onClick={() => setGallery(null)}><button ref={closeRef} className="lightbox-close" aria-label="Fechar imagem" onClick={() => setGallery(null)}><X/></button><div className="lightbox-content" onClick={e => e.stopPropagation()}><img src={asset(gallery.image)} width={gallery.width} height={gallery.height} alt={gallery.label} /></div></div>}
   </>;
 }
 
