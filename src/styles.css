@@ -112,7 +112,7 @@
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  width: max(44%, 184px);
+  width: max(44%, 200px);
   max-width: calc(100% - 16px);
   min-height: clamp(44px, 7.5cqw, 94px);
   padding: 5px 10px;
@@ -121,10 +121,11 @@
   background: var(--navy);
   color: #fff;
   font-family: 'Nunito', sans-serif;
-  font-size: clamp(16px, 4cqw, 44px);
+  font-size: clamp(16px, 3.4cqw, 42px);
   font-weight: 1000;
   line-height: 1.1;
   text-align: center;
+  white-space: nowrap;
   box-shadow: 0 4px 14px #08227f40;
 }
 .hero-enrollment:hover .hero-enrollment-action,
