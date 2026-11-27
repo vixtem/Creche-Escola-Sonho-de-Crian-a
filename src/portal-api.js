@@ -54,7 +54,7 @@ export function getPortalClient({ staff = false } = {}) {
     const { url, publishableKey, enabled, demo } = await getPortalConfig();
     if (demo === true) {
       const { createDemoClient } = await import('./portal-demo.js');
-      return createDemoClient();
+      return createDemoClient({ staff });
     }
     if (enabled !== true) return null;
     if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(url)

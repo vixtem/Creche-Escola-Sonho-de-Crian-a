@@ -211,7 +211,7 @@ function SchoolEnrollmentDetails({ client, item }) {
   </details>;
 }
 
-function Decision({ client, item, onSaved }) {
+function Decision({ client, item, onSaved, readOnly }) {
   const [next, setNext] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -243,11 +243,11 @@ function Decision({ client, item, onSaved }) {
     <h3>{item.child_name}</h3>
     <p><strong>Nascimento:</strong> {formatDate(item.birth_date)} · <strong>Ano letivo:</strong> {item.school_year} · <strong>Turno:</strong> {studyModes[item.schedule]}</p>
     <p><strong>Unidade:</strong> {schoolUnits[item.unit] || 'Não informada'}</p>
-    <p><strong>Responsável:</strong> {item.guardian_name} ({item.guardian_relationship}) · {item.guardian_phone} · {item.guardian_email}</p>
+    <p><strong>Responsável:</strong> {item.guardian_name} ({item.guardian_relationship}) · {item.guardian_phone}{item.guardian_email && ` · ${item.guardian_email}`}</p>
     <p><strong>Protocolo:</strong> <code>{item.protocol}</code></p>
     <History client={client} item={item} />
     <SchoolEnrollmentDetails client={client} item={item} />
-    {options.length > 0 && <form onSubmit={submit}>
+    {!readOnly && options.length > 0 && <form onSubmit={submit}>
       <div className="enrollment-grid portal-decision-fields">
         <div className="enrollment-field">
           <label htmlFor={`status-${item.id}`}>Nova situação</label>
@@ -267,16 +267,21 @@ function Decision({ client, item, onSaved }) {
   </div>;
 }
 
-function EditApplication({ client, item, onCancel, onSaved, onReload }) {
+function EnrollmentSheet({ client, item, onCancel, onSaved, onReload }) {
+  const creating = !item;
+  const fields = sheetFields.map(field => field.name === 'guardian_email' && (creating || !item.guardian_id)
+    ? { ...field, label: 'E-mail de contato (opcional)', optional: true }
+    : field.name === 'unit' && creating ? { ...field, optional: false } : field);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [details, setDetails] = useState(null);
-  const [schedule, setSchedule] = useState(item.schedule);
+  const [details, setDetails] = useState(creating ? {} : null);
+  const [schedule, setSchedule] = useState(item?.schedule ?? '');
   const [photo, setPhoto] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
 
   useEffect(() => {
+    if (!item) return;
     let active = true;
     loadEnrollmentRecord(client, item.id).then(record => {
       if (!active) return;
@@ -286,7 +291,7 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
       if (active) setError({ code: 'load', message: 'Não foi possível carregar a ficha completa.' });
     });
     return () => { active = false; };
-  }, [client, item.id]);
+  }, [client, item?.id]);
 
   async function changePhoto(input) {
     const file = input.files[0];
@@ -307,8 +312,8 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
     event.preventDefault();
     if (!details || photoLoading || busy) return;
     const form = new FormData(event.currentTarget);
-    const values = Object.fromEntries(sheetFields.map(({ name }) => [name, form.get(name).trim()]));
-    if (sheetFields.some(({ name, optional }) => !optional && !values[name])) {
+    const values = Object.fromEntries(fields.map(({ name }) => [name, form.get(name).trim()]));
+    if (fields.some(({ name, optional }) => !optional && !values[name])) {
       setError({ message: 'Preencha todos os campos da ficha.' });
       return;
     }
@@ -323,9 +328,8 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
       const { registration_date, grade, ...storedDetails } = { ...details, ...enrollmentHours(values.schedule) };
       const allowedFields = staffEnrollmentSections.flatMap(({ fields }) => visibleEnrollmentFields(fields, details));
       const payload = Object.fromEntries(allowedFields.map(({ name }) => [name, storedDetails[name]?.trim()]).filter(([, value]) => value));
-      const { error } = await client.rpc('edit_enrollment_record', {
-        p_application: item.id,
-        p_expected_updated_at: item.updated_at || item.created_at,
+      const { error } = await client.rpc(creating ? 'create_staff_enrollment_record' : 'edit_enrollment_record', {
+        ...(!creating && { p_application: item.id, p_expected_updated_at: item.updated_at || item.created_at }),
         ...Object.fromEntries(Object.entries(values).map(([key, value]) => [`p_${key}`, value])),
         p_unit: values.unit || null, p_details: payload, p_photo: photo,
         p_registration_date: registration_date || null, p_grade: grade || null,
@@ -336,8 +340,10 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
       const messages = {
         '40001': 'A ficha mudou desde que foi aberta. Recarregue a ficha para conferir a versão atual.',
         '22023': 'Confira os dados informados na ficha.',
-        '23505': 'Já existe uma criança com o mesmo nome e data de nascimento nesta conta.',
-        '42501': 'A conta atual não tem permissão para editar esta ficha.',
+        '23505': creating
+          ? 'Já existe um cadastro com o mesmo nome e data de nascimento. Confira também os alunos arquivados.'
+          : 'Já existe uma criança com o mesmo nome e data de nascimento nesta conta.',
+        '42501': 'A conta atual não tem permissão para salvar esta ficha.',
         P0002: 'Esta ficha não está mais disponível.',
       };
       setError({ code: err.code, message: messages[err.code] || 'Não foi possível salvar a ficha. Tente novamente.' });
@@ -351,32 +357,33 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
       <label htmlFor={`sheet-${name}`}>{label}</label>
       {options ? <select id={`sheet-${name}`} name={name} required={!optional}
         {...(name === 'schedule' ? { value: schedule, onChange: event => setSchedule(event.target.value) }
-          : { defaultValue: item[name] ?? '' })}>
-        {optional && <option value="">Não informada</option>}
+          : { defaultValue: item?.[name] ?? '' })}>
+        {(optional || creating) && <option value="">{optional ? 'Não informada' : 'Selecione'}</option>}
         {Object.entries(options).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select> : <input id={`sheet-${name}`} name={name} defaultValue={item[name]} {...input} required={!optional} />}
+      </select> : <input id={`sheet-${name}`} name={name} defaultValue={item?.[name]} {...input} required={!optional} />}
     </div>;
   }
 
   const answers = { ...details, ...enrollmentHours(schedule) };
 
   return <form onSubmit={save}>
-    <h3>Editar ficha de {item.child_name}</h3>
+    <h3>{creating ? 'Cadastrar criança' : `Editar ficha de ${item.child_name}`}</h3>
+    {creating && <p>Ano letivo {enrollmentYear}. Ao salvar, a matrícula fica confirmada.</p>}
     <fieldset className="enrollment-grid portal-edit-fields" disabled={busy || !details}>
-      {sheetFields.filter(({ base }) => !base).map(basicField)}
+      {fields.filter(({ base }) => !base).map(basicField)}
     </fieldset>
     {!details && !error && <p role="status">Carregando ficha completa…</p>}
-    {details && staffEnrollmentSections.map(({ title, fields, base }) => <fieldset className="enrollment-section" key={title} disabled={busy}>
+    {details && staffEnrollmentSections.map(({ title, fields: sectionFields, base }) => <fieldset className="enrollment-section" key={title} disabled={busy}>
       <legend>{title}</legend>
       <div className="enrollment-grid">
-        {base && sheetFields.filter(field => field.base === base).map(basicField)}
-        {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={{ ...field, optional: true }} values={answers}
+        {base && fields.filter(field => field.base === base).map(basicField)}
+        {visibleEnrollmentFields(sectionFields, answers).map(field => <Field key={field.name} field={{ ...field, optional: true }} values={answers}
           update={(name, value) => setDetails(current => ({ ...current, [name]: value }))} />)}
         {base === 'child' && <PhotoField photo={photo} loading={photoLoading} error={photoError} onChange={changePhoto} />}
       </div>
     </fieldset>)}
     <div className="portal-actions">
-      <button className="button" disabled={busy || photoLoading || !details || error?.code === '40001'}>{busy ? 'Salvando…' : 'Salvar alterações'}</button>
+      <button className="button" disabled={busy || photoLoading || !details || error?.code === '40001'}>{busy ? 'Salvando…' : creating ? 'Salvar matrícula' : 'Salvar alterações'}</button>
       {['40001', 'load'].includes(error?.code) && <button type="button" className="text-link" onClick={onReload}>Recarregar ficha</button>}
       <button type="button" className="text-link" disabled={busy} onClick={onCancel}>Cancelar</button>
     </div>
@@ -386,6 +393,8 @@ function EditApplication({ client, item, onCancel, onSaved, onReload }) {
 
 function Secretariat({ client }) {
   const [tab, setTab] = useState(0);
+  const [archived, setArchived] = useState(false);
+  const [changingRecord, setChangingRecord] = useState(false);
   const [records, setRecords] = useState([]);
   const [years, setYears] = useState([]);
   const [year, setYear] = useState(enrollmentYear);
@@ -401,6 +410,8 @@ function Secretariat({ client }) {
   const [refresh, setRefresh] = useState(0);
   const sheetRef = useRef(null);
   const referenceDate = dateInSchool();
+  const archivedView = tab === 1 && archived;
+  const creating = tab === 1 && sheet?.mode === 'create';
 
   useEffect(() => {
     let active = true;
@@ -409,7 +420,7 @@ function Secretariat({ client }) {
     setError('');
     Promise.all([
       allRows(() => client.from('enrollment_applications')
-        .select('id, protocol, child_name, birth_date, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, unit, status, created_at, updated_at')
+        .select('id, protocol, child_name, birth_date, guardian_id, guardian_name, guardian_relationship, guardian_phone, guardian_email, school_year, schedule, unit, status, created_at, updated_at, archived_at')
         .eq('school_year', year).order('created_at').order('id')),
       allRows(() => client.from('enrollment_applications').select('school_year').order('school_year').order('id')),
     ]).then(([items, historic]) => {
@@ -422,15 +433,18 @@ function Secretariat({ client }) {
   }, [client, year, refresh]);
 
   useEffect(() => {
-    if (sheet && tab === 1 && !loading) sheetRef.current?.focus();
+    if (sheet && tab === 1 && (sheet.mode === 'create' || !loading)) sheetRef.current?.focus();
   }, [sheet, tab, loading]);
 
   const items = records.map(item => ({ ...item, age: ageOnDate(item.birth_date, referenceDate) }));
-  const ages = [...new Set(items.map(item => item.age).filter(value => value !== null))].sort((a,b) => a-b);
-  const filtered = items.filter(item => (!status || item.status === status)
+  const inView = items.filter(item => Boolean(item.archived_at) === archivedView);
+  const ages = [...new Set(inView.map(item => item.age).filter(value => value !== null))].sort((a,b) => a-b);
+  const matchesFilters = item => (!status || item.status === status)
     && (!schedule || item.schedule === schedule)
-    && (!unit || (item.unit ?? 'unspecified') === unit) && (age === '' || item.age === Number(age)));
-  const screenRows = [...filtered].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    && (!unit || (item.unit ?? 'unspecified') === unit) && (age === '' || item.age === Number(age));
+  const filtered = items.filter(item => !item.archived_at && matchesFilters(item));
+  const screenRows = inView.filter(matchesFilters).sort((a, b) =>
+    (b.archived_at || b.created_at).localeCompare(a.archived_at || a.created_at));
   const enrolled = filtered.filter(item => item.status === 'enrolled');
   const active = filtered.filter(item => !['enrolled','declined'].includes(item.status)).length;
   const counts = (keys, keyFor, rows = filtered) => Object.fromEntries(keys.map(key => [key, rows.filter(item => keyFor(item) === key).length]));
@@ -439,7 +453,7 @@ function Secretariat({ client }) {
   const byUnit = counts(Object.keys(reportUnits), item => item.unit ?? 'unspecified');
   const enrolledByUnit = counts(Object.keys(reportUnits), item => item.unit ?? 'unspecified', enrolled);
   const byAge = counts(ages, item => item.age);
-  const showing = items.find(item => item.id === sheet?.id);
+  const showing = inView.find(item => item.id === sheet?.id);
 
   function openSheet(item, mode) {
     setNotice('');
@@ -456,17 +470,69 @@ function Secretariat({ client }) {
     reload();
   }
 
-  function renderStudentRows(rows, showDecision) {
+  function switchArchive(value) {
+    setArchived(value);
+    setAge('');
+    setSheet(null);
+    setNotice('');
+  }
+
+  function savedRegistration() {
+    setYear(enrollmentYear);
+    setStatus('');
+    setSchedule('');
+    setUnit('');
+    switchArchive(false);
+    setNotice('Matrícula cadastrada.');
+    reload();
+  }
+
+  async function changeRecord(item, action) {
+    if (changingRecord) return;
+    if (action === 'delete' && !window.confirm(
+      `Excluir definitivamente a matrícula de ${item.child_name}? A ficha e o histórico desta matrícula serão apagados.`
+    )) return;
+
+    setChangingRecord(true);
+    setNotice('');
+    try {
+      const { error } = await client.rpc('manage_staff_enrollment_record', {
+        p_application: item.id, p_expected_updated_at: item.updated_at || item.created_at, p_action: action,
+      });
+      if (error) throw error;
+      setSheet(current => current?.id === item.id ? null : current);
+      setNotice({ archive: 'Ficha arquivada.', restore: 'Ficha restaurada.', delete: 'Matrícula excluída.' }[action]);
+      reload();
+    } catch (err) {
+      if (err.code === '40001' || err.code === 'P0002') {
+        setNotice('A ficha mudou. A lista foi atualizada.');
+        reload();
+      } else {
+        setNotice('Não foi possível concluir a ação. Tente novamente.');
+      }
+    } finally {
+      setChangingRecord(false);
+    }
+  }
+
+  function renderStudentRows(rows, interactive) {
     return rows.map(item => <tr key={item.id}>
-      <td>{showDecision ? <button type="button" className="portal-student-name"
+      <td>{interactive ? <button type="button" className="portal-student-name"
         aria-expanded={sheet?.id === item.id && sheet.mode === 'view'}
         onClick={() => openSheet(item, 'view')}>{item.child_name}</button> : item.child_name}</td>
       <td>{item.age ?? '—'}</td><td>{studyModes[item.schedule]}</td><td>{schoolUnits[item.unit] || reportUnits.unspecified}</td><td>{states[item.status]}</td>
-      {showDecision && <>
-        <td><button type="button" className="text-link"
+      {interactive && <>
+        <td>{!archivedView && <button type="button" className="text-link"
           aria-expanded={sheet?.id === item.id && sheet.mode === 'edit'} aria-label={`Editar ficha de ${item.child_name}`}
-          onClick={() => openSheet(item, 'edit')}>Editar</button></td>
-        <td><DownloadEnrollmentButton client={client} item={item} compact /></td>
+          onClick={() => openSheet(item, 'edit')}>Editar</button>}
+          <DownloadEnrollmentButton client={client} item={item} compact /></td>
+        <td>{archivedView ? <>
+          <button type="button" className="text-link" disabled={changingRecord}
+            aria-label={`Restaurar ficha de ${item.child_name}`} onClick={() => changeRecord(item, 'restore')}>Restaurar</button>
+          <button type="button" className="text-link portal-delete" disabled={changingRecord}
+            aria-label={`Excluir ficha de ${item.child_name}`} onClick={() => changeRecord(item, 'delete')}>Excluir</button>
+        </> : <button type="button" className="text-link" disabled={changingRecord}
+          aria-label={`Arquivar ficha de ${item.child_name}`} onClick={() => changeRecord(item, 'archive')}>Arquivar</button>}</td>
       </>}
     </tr>);
   }
@@ -492,7 +558,19 @@ function Secretariat({ client }) {
         tabIndex={tab === index ? 0 : -1} onClick={() => setTab(index)}
         onKeyDown={event => changeTabWithKeyboard(event, index)}>{label}</button>)}
     </div>
-    <section className="portal-card portal-screen">
+    {tab === 1 && !creating && <div className="portal-actions portal-screen">
+      {!archivedView && <button type="button" className="button" onClick={() => {
+        setNotice('');
+        setSheet({ mode: 'create' });
+      }}>Cadastrar criança</button>}
+      <button type="button" className="text-link" onClick={() => switchArchive(!archivedView)}>
+        {archivedView ? 'Voltar para Alunos' : 'Alunos arquivados'}
+      </button>
+    </div>}
+    {creating && <section className="portal-card portal-screen" ref={sheetRef} tabIndex={-1} aria-label="Cadastrar criança">
+      <EnrollmentSheet client={client} onCancel={() => setSheet(null)} onSaved={savedRegistration} />
+    </section>}
+    {!creating && <section className="portal-card portal-screen">
       <h2>Filtros de matrículas</h2>
       <div className="portal-filters">
         <div className="enrollment-field"><label htmlFor="filter-year">Ano letivo</label>
@@ -520,7 +598,7 @@ function Secretariat({ client }) {
         <button className="text-link" onClick={reload}>Atualizar</button>
       </div>
       <p role="status">{error || (loading ? 'Carregando solicitações…' : '')}</p>
-    </section>
+    </section>}
     <section className="portal-report portal-tab-panel" role="tabpanel" id="staff-panel-reports"
       aria-labelledby="staff-tab-reports" data-active={tab === 0} tabIndex={0}>
       <div className="portal-report-title">
@@ -555,21 +633,29 @@ function Secretariat({ client }) {
       </>}
     </section>
     <section className="portal-card portal-tab-panel portal-students-panel" role="tabpanel" id="staff-panel-students"
-      aria-labelledby="staff-tab-students" data-active={tab === 1} tabIndex={0}>
-      <h2 className="portal-screen">Alunos</h2>
+      aria-labelledby="staff-tab-students" data-active={tab === 1 && !creating} tabIndex={0}>
+      <h2 className="portal-screen">{archivedView ? 'Alunos arquivados' : 'Alunos'}</h2>
       <p className="portal-screen" role="status">{notice}</p>
       {!loading && !error && <>
-        <div className="portal-table-wrap">{filtered.length ? <table>
-          <caption>Solicitações no filtro</caption>
-          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Unidade</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th><th scope="col" className="portal-screen">Baixar ficha</th></tr></thead>
+        <div className="portal-table-wrap">{(screenRows.length > 0 || filtered.length > 0) && <table
+          className={screenRows.length ? undefined : 'portal-print-rows'}>
+          <caption>
+            <span className="portal-screen">{archivedView ? 'Matrículas arquivadas no filtro' : 'Solicitações no filtro'}</span>
+            <span className="portal-print-rows">Solicitações no filtro</span>
+          </caption>
+          <thead><tr><th scope="col">Criança</th><th scope="col">Idade</th><th scope="col">Turno</th><th scope="col">Unidade</th><th scope="col">Situação</th><th scope="col" className="portal-screen">Ficha</th><th scope="col" className="portal-screen">Ações</th></tr></thead>
           <tbody className="portal-screen">{renderStudentRows(screenRows, true)}</tbody>
           <tbody className="portal-print-rows">{renderStudentRows(filtered, false)}</tbody>
-        </table> : <p>Nenhuma solicitação corresponde aos filtros.</p>}</div>
+        </table>}
+          {screenRows.length === 0 && <p className="portal-screen">{archivedView
+            ? 'Nenhum aluno arquivado corresponde aos filtros.'
+            : 'Nenhuma solicitação corresponde aos filtros.'}</p>}
+        </div>
         {showing && <aside className="portal-card portal-screen" ref={sheetRef} tabIndex={-1} aria-label="Ficha do aluno">
           {sheet.mode === 'edit'
-            ? <EditApplication key={`${showing.id}-${showing.updated_at}`} client={client} item={showing}
+            ? <EnrollmentSheet key={`${showing.id}-${showing.updated_at}`} client={client} item={showing}
               onCancel={() => setSheet(null)} onSaved={() => savedSheet(showing.id)} onReload={reload} />
-            : <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={reload} />}
+            : <Decision key={`${showing.id}-${showing.status}`} client={client} item={showing} onSaved={reload} readOnly={archivedView} />}
         </aside>}
       </>}
     </section>

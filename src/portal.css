@@ -138,3 +138,6 @@
 .portal-login-demo { margin-top: 16px; padding: 12px; border-radius: 10px; background: var(--login-tint); }
 .portal-login-demo > div { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; color: var(--login-accent); }
 .portal-login-demo p { margin: 0; }
+
+.portal-students-panel td .text-link { display:block; white-space:nowrap; }
+.portal-students-panel .portal-delete { color:#97243a; }

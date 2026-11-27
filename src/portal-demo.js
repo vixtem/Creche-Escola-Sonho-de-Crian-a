@@ -201,11 +201,50 @@ function editEnrollmentRecord(db, params) {
   return saved;
 }
 
-export function createDemoClient() {
+function createStaffEnrollmentRecord(db, params) {
+  const normalize = name => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+  if (db.enrollment_children.some(child => child.guardian_id === null && child.birth_date === params.p_birth_date
+    && normalize(child.full_name) === normalize(params.p_child_name))) return failure('23505');
+  const id = crypto.randomUUID();
+  const childId = crypto.randomUUID();
+  const created = now();
+  db.enrollment_children.push({ id: childId, guardian_id: null });
+  db.enrollment_applications.push({
+    id, child_id: childId, guardian_id: null, protocol: `TESTE-${id.slice(0, 8).toUpperCase()}`,
+    school_year: enrollmentYear, status: 'enrolled', created_at: created,
+  });
+  history(db, id, 'enrolled');
+  return editEnrollmentRecord(db, { ...params, p_application: id, p_expected_updated_at: created });
+}
+
+function manageStaffEnrollmentRecord(db, { p_application, p_expected_updated_at, p_action }) {
+  const row = db.enrollment_applications.find(item => item.id === p_application);
+  if (!row) return failure('P0002');
+  if ((row.updated_at ?? row.created_at) !== p_expected_updated_at
+    || Boolean(row.archived_at) === (p_action === 'archive')) return failure('40001');
+  if (p_action === 'delete') {
+    db.enrollment_applications = db.enrollment_applications.filter(item => item.id !== row.id);
+    db.enrollment_history = db.enrollment_history.filter(item => item.application_id !== row.id);
+    db.enrollment_form_details = db.enrollment_form_details.filter(item => item.application_id !== row.id);
+    if (row.guardian_id === null && !db.enrollment_applications.some(item => item.child_id === row.child_id)) {
+      db.enrollment_children = db.enrollment_children.filter(item => item.id !== row.child_id);
+    }
+  } else {
+    row.archived_at = p_action === 'archive' ? now() : null;
+    row.updated_at = now();
+  }
+  save(db);
+  return result(null);
+}
+
+export function createDemoClient({ staff = false } = {}) {
   return {
     demo: true,
     demoSession: { user },
-    from: query,
+    from(table) {
+      const selection = query(table);
+      return !staff && table === 'enrollment_children' ? selection.eq('guardian_id', user.id) : selection;
+    },
     rpc(name, params) {
       if (name === 'save_current_enrollment') return { async single() { return saveFamilyEnrollment(read(), params); } };
       if (name === 'create_current_enrollment') return { async single() { return createFamilyEnrollment(read(), params); } };
@@ -213,6 +252,10 @@ export function createDemoClient() {
       if (name === 'save_family_enrollment_record') return { async single() { return saveFamilyEnrollmentRecord(read(), params); } };
       if (name === 'decide_enrollment') return Promise.resolve().then(() => decide(read(), params));
       if (name === 'edit_enrollment_application') return Promise.resolve().then(() => editApplication(read(), params));
+      if (name === 'create_staff_enrollment_record') return Promise.resolve().then(() => staff
+        ? createStaffEnrollmentRecord(read(), params) : failure('42501'));
+      if (name === 'manage_staff_enrollment_record') return Promise.resolve().then(() => staff
+        ? manageStaffEnrollmentRecord(read(), params) : failure('42501'));
       if (name === 'edit_enrollment_record') return Promise.resolve().then(() => editEnrollmentRecord(read(), params));
       return Promise.resolve(failure('42883'));
     },
