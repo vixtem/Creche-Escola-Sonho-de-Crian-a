@@ -47,9 +47,17 @@
 .hero-actions{flex-wrap:wrap}
 @media(max-width:650px){.hero-actions{flex-wrap:nowrap}}
 
+/* A galeria acompanha o mesmo corte de largura do menu desktop. */
+@media (width > 850px) {
+  .experience-grid {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(100%, 760px);
+    margin-inline: auto;
+  }
+}
 .experience-photo { aspect-ratio: 4 / 3; background: #fafafa; }
 .experience-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
-@media (max-width: 650px) {
+@media (max-width: 650px), (width > 850px) {
   .experience-photo { aspect-ratio: auto; }
   .experience-photo img { height: auto; }
 }
