@@ -1,4 +1,23 @@
 export const enrollmentYear = 2027;
+
+export function enrollmentBirthRange(year = enrollmentYear, previousBirth) {
+  const min = `${year - 5}-01-01`;
+  const max = `${year - 2}-12-31`;
+  return {
+    min: previousBirth && previousBirth < min ? previousBirth : min,
+    max: previousBirth && previousBirth > max ? previousBirth : max,
+  };
+}
+
+export function isEnrollmentBirthDate(birth, year = enrollmentYear, previousBirth) {
+  if (!birth) return false;
+  const { min, max } = enrollmentBirthRange(year);
+  return birth === previousBirth || (birth >= min && birth <= max);
+}
+
+export function enrollmentAgeRequirement(year = enrollmentYear) {
+  return `Para o ano letivo de ${year}, a criança precisa completar de 2 a 5 anos durante o ano.`;
+}
 export const childSexOptions = ['Feminino', 'Masculino'];
 
 export const studyModes = {
@@ -18,7 +37,7 @@ export const sections = [
     fields: [
       { name: 'child', label: 'Nome completo da criança', limit: 120, wide: true },
       { name: 'birth', label: 'Data de nascimento', type: 'date' },
-      { name: 'age', label: 'Idade', type: 'age' },
+      { name: 'age', label: `Idade no fim de ${enrollmentYear}`, type: 'age' },
       { name: 'sex', label: 'Sexo', options: childSexOptions },
       { name: 'cep', label: 'CEP', limit: 9, optional: true, autoComplete: 'section-crianca postal-code' },
       { name: 'address', label: 'Endereço completo', limit: 180, wide: true },
