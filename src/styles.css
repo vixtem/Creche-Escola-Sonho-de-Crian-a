@@ -93,41 +93,49 @@
   padding-block: clamp(16px, 3.2vw, 45px);
 }
 .hero-enrollment {
-  min-height: clamp(340px, 44vw, 580px);
+  position: relative;
+  display: block;
+  container-type: inline-size;
+  border-radius: clamp(12px, 2vw, 26px);
+}
+.hero-enrollment-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: inherit;
+}
+.hero-enrollment-action {
+  position: absolute;
+  top: 85.3%;
+  left: 50%;
+  transform: translateX(-50%);
   display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: clamp(20px, 4vw, 42px);
-  padding: 28px 18px;
-  border-radius: 26px;
+  place-items: center;
+  box-sizing: border-box;
+  width: max(44%, 184px);
+  max-width: calc(100% - 16px);
+  min-height: clamp(44px, 7.5cqw, 94px);
+  padding: 5px 10px;
+  border: clamp(3px, .6cqw, 8px) solid #fff;
+  border-radius: 999px;
   background: var(--navy);
   color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: clamp(16px, 4cqw, 44px);
+  font-weight: 1000;
+  line-height: 1.1;
   text-align: center;
+  box-shadow: 0 4px 14px #08227f40;
 }
-.hero-enrollment h1 {
-  margin: 0;
-  font-weight: 900;
-  font-size: clamp(42px, 9.6vw, 126px);
-  line-height: .94;
-  letter-spacing: -.035em;
+.hero-enrollment:hover .hero-enrollment-action,
+.hero-enrollment:focus-visible .hero-enrollment-action { background: #214684; }
+.hero-enrollment:focus-visible { outline: 3px solid var(--navy); outline-offset: 4px; }
+@media (min-width: 900px) {
+  .hero-enrollment { width: min(100%, max(760px, 105svh)); margin-inline: auto; }
 }
-.hero-enrollment h1 strong { display: block; color: #ffe000; font-weight: inherit; }
-.hero-enrollment-action {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  min-height: 50px;
-  padding: 12px clamp(16px, 3vw, 32px);
-  border-radius: 10px;
-  background: #ffe000;
-  color: var(--navy);
-  font-size: clamp(16px, 2vw, 23px);
-  font-weight: 800;
+@media (max-width: 420px) {
+  .hero-enrollment { margin-bottom: 22px; }
 }
-.hero-enrollment:hover .hero-enrollment-action { background: #ffec66; }
-.hero-enrollment-action svg { flex-shrink: 0; }
-.hero-enrollment:focus-visible { outline: 3px solid #fff; outline-offset: -7px; }
 
 .footer-bottom a { color: #657084; }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, ArrowRight, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
+import { ArrowUpRight, Sparkles, Menu, X, ChevronDown, Check, Copy, MessageCircle, MapPin, Clock, MoveUpRight } from 'lucide-react';
 import { school } from './school';
 import './styles.css';
 
@@ -36,8 +36,9 @@ function EnrollmentBanner() {
   return (
     <section id="inicio" className="hero-enrollment-section section-wrap">
       <a className="hero-enrollment" href="./portal.html">
-        <h1>Matrículas <strong>abertas</strong></h1>
-        <span className="hero-enrollment-action">Fazer pré-matrícula <ArrowRight size={22} aria-hidden="true" /></span>
+        <h1 className="sr-only">Matrículas abertas 2027</h1>
+        <img className="hero-enrollment-art" src={asset('matriculas-abertas-2027.webp')} width="1536" height="1024" alt="" fetchPriority="high" />
+        <span className="hero-enrollment-action">Faça a pré-matrícula</span>
       </a>
     </section>
   );
