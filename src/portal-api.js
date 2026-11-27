@@ -22,13 +22,36 @@ export const dateInSchool = () => new Intl.DateTimeFormat('sv-SE', { timeZone: '
 export const currentSchoolYear = () => Number(dateInSchool().slice(0, 4));
 export const formatDate = value => value?.slice(0, 10).split('-').reverse().join('/');
 
+let configPromise;
+
+function getPortalConfig() {
+  configPromise ??= (async () => {
+    const response = await fetch(`${import.meta.env.BASE_URL}enrollment-config.json`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Falha ao carregar a configuração do portal.');
+    return response.json();
+  })();
+  return configPromise;
+}
+
+export async function isGoogleSignInEnabled() {
+  try {
+    const { url, publishableKey, enabled, demo } = await getPortalConfig();
+    if (enabled !== true || demo === true) return false;
+    const response = await fetch(new URL('/auth/v1/settings', url), {
+      headers: { apikey: publishableKey },
+      cache: 'no-store',
+    });
+    return response.ok && (await response.json()).external?.google === true;
+  } catch {
+    return false;
+  }
+}
+
 const clientPromises = {};
 export function getPortalClient({ staff = false } = {}) {
   const area = staff ? 'staff' : 'family';
   clientPromises[area] ??= (async () => {
-    const response = await fetch(`${import.meta.env.BASE_URL}enrollment-config.json`, { cache: 'no-store' });
-    if (!response.ok) throw new Error('Falha ao carregar a configuração do portal.');
-    const { url, publishableKey, enabled, demo } = await response.json();
+    const { url, publishableKey, enabled, demo } = await getPortalConfig();
     if (demo === true) {
       const { createDemoClient } = await import('./portal-demo.js');
       return createDemoClient();

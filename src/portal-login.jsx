@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, FlaskConical, ShieldCheck, UsersRound } from 'lucide-react';
+import { isGoogleSignInEnabled } from './portal-api.js';
 
 const minPassword = 8;
 const returnTo = staff => new URL(staff ? './portal.html?area=secretaria' : './portal.html', window.location.href).href;
@@ -30,9 +31,11 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const activeMode = recovery ? 'reset' : mode;
+  const offerGoogle = !staff && !client.demo;
   const staffOtp = staff && activeMode === 'otp';
   const newPassword = activeMode === 'signup' || activeMode === 'reset';
   let copy = familyCopy[activeMode];
@@ -45,6 +48,33 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
       detail: 'Entre com seu e-mail autorizado e senha para analisar as solicitações.' };
   } else if (staff && activeMode === 'reset') {
     copy = { ...copy, detail: 'Escolha uma nova senha para voltar a acessar a Secretaria.' };
+  }
+
+  useEffect(() => {
+    if (!offerGoogle) return;
+    let active = true;
+    isGoogleSignInEnabled().then(enabled => { if (active) setGoogleEnabled(enabled); });
+    return () => { active = false; };
+  }, [offerGoogle]);
+
+  async function signInWithGoogle() {
+    if (!offerGoogle || !googleEnabled || busy || activeMode !== 'enter') return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const { error } = await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: returnTo(false),
+          queryParams: { prompt: 'select_account' },
+        },
+      });
+      if (error) throw error;
+    } catch {
+      setError('Não foi possível entrar com o Google. Tente novamente ou use e-mail e senha.');
+      setBusy(false);
+    }
   }
 
   function changeMode(next) {
@@ -116,6 +146,16 @@ export function PortalLogin({ client, staff, recovery, onRecovered, onDemo }) {
       <div className="portal-login-icon"><RoleIcon size={27} aria-hidden="true" /></div>
       <div><h2>{copy.title}</h2><p>{copy.detail}</p></div>
     </div>
+    {offerGoogle && googleEnabled && activeMode === 'enter' && (
+      <div className="portal-login-alternative">
+        <button type="button" className="portal-login-google" disabled={busy} onClick={signInWithGoogle}>
+          <img src="https://developers.google.com/static/identity/images/g-logo.png" width="20" height="20"
+            alt="" referrerPolicy="no-referrer" />
+          Entrar com Google
+        </button>
+        <p>Ou entre com e-mail e senha</p>
+      </div>
+    )}
     <form onSubmit={submit}>
       <fieldset className="portal-login-fields" disabled={busy || client.demo}>
         {activeMode !== 'reset' && <div className="enrollment-field">

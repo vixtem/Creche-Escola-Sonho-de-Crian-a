@@ -88,6 +88,39 @@
 .portal-login-heading h2 { margin: 0 0 4px; }
 .portal-login-heading p { margin: 0; line-height: 1.45; }
 .portal-login-icon { display: grid; place-items: center; flex: 0 0 48px; height: 48px; border-radius: 12px; background: var(--login-tint); color: var(--login-accent); }
+.portal-login-alternative { margin-bottom: 18px; }
+.portal-login-alternative p {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: #45546b;
+  font-size: 14px;
+  text-align: center;
+}
+.portal-login-alternative p::before, .portal-login-alternative p::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid #ccdedf;
+}
+.portal-login-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #747775;
+  border-radius: 9px;
+  background: #fff;
+  color: #1f1f1f;
+  font: 500 14px/20px 'Google Sans', Arial, sans-serif;
+}
+.portal-login-google img { width: 20px; height: 20px; flex-shrink: 0; }
+.portal-login-google:hover:enabled { background: #f3f6fc; }
+.portal-login-google:disabled { cursor: default; opacity: .7; }
+
 .portal-login-fields { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .portal-login .enrollment-field { margin: 0; }
 .portal-login-submit { width: 100%; display: flex; justify-content: center; gap: 10px; background: var(--login-accent); color: #fff; }
