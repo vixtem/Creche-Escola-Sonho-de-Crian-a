@@ -2,12 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, Download, ShieldCheck } from 'lucide-react';
 import { school } from './school';
-import { sections, ageOnDate, childSexOptions, enrollmentYear } from './enrollment-fields';
+import { sections, ageOnDate, childSexOptions, enrollmentAgeRequirement, enrollmentBirthRange, enrollmentYear, isEnrollmentBirthDate } from './enrollment-fields';
 import { combineLegacyAddress, enrollmentAddressFields, enrollmentDeclaration, enrollmentDetailsSections, enrollmentHours, imageConsentScope, visibleEnrollmentFields } from './enrollment-details';
 import { Field, PhotoField } from './enrollment-controls';
 import { formatCep, lookupCepAddress } from './enrollment-cep.js';
 import { prepareEnrollmentPhoto } from './enrollment-photo';
-import { allRows, dateInSchool, getPortalClient } from './portal-api';
+import { allRows, getPortalClient } from './portal-api';
 import './styles.css';
 import './enrollment.css';
 
@@ -264,7 +264,10 @@ function Enrollment() {
   }
 
   const birthDate = values.birth;
-  const age = birthDate ? ageOnDate(birthDate, dateInSchool()) : null;
+  const savedBirth = application?.birth_date;
+  const birthRange = enrollmentBirthRange(enrollmentYear, savedBirth);
+  const ageRequirement = enrollmentAgeRequirement();
+  const age = birthDate ? ageOnDate(birthDate, `${enrollmentYear}-12-31`) : null;
   const answers = { ...values, ...enrollmentHours(values.schedule), age: age === null ? '' : `${age} ${age === 1 ? 'ano' : 'anos'}` };
 
   async function download(event) {
@@ -276,6 +279,10 @@ function Enrollment() {
       blank.setCustomValidity('Preencha este campo.');
       blank.reportValidity();
       blank.setCustomValidity('');
+      return;
+    }
+    if (!isEnrollmentBirthDate(birthDate, enrollmentYear, savedBirth)) {
+      setStatus(ageRequirement);
       return;
     }
     setBusy(true);
@@ -304,6 +311,11 @@ function Enrollment() {
   async function send(event) {
     const form = event.currentTarget.form;
     if (sending || cepLoading) return;
+    if (birthDate && !isEnrollmentBirthDate(birthDate, enrollmentYear, savedBirth)) {
+      setSendError(ageRequirement);
+      form.elements.namedItem('birth').focus();
+      return;
+    }
     const extraFields = isEnrollment ? enrollmentDetailsSections.flatMap(section => visibleEnrollmentFields(section.fields, values)) : [];
     const fields = [...formFields, ...extraFields];
     for (const { name, optional } of fields) {
@@ -379,6 +391,7 @@ function Enrollment() {
       setSent(data);
     } catch (error) {
       setSendError(error?.code === '40001' ? 'Esta ficha foi atualizada desde que você abriu a página. Recarregue a ficha para conferir os dados atuais.'
+        : error?.code === 'P2001' ? ageRequirement
         : error?.code === '23505' ? 'Já existe uma criança com esse nome e data de nascimento. Abra a ficha dessa criança pelo Portal da Família.'
         : 'Não foi possível salvar a ficha. Confira os dados e tente novamente.');
     } finally {
@@ -418,8 +431,9 @@ function Enrollment() {
               <legend>{title}</legend>
               {title === 'Autorização de uso de imagem' && <p>{imageConsentScope}</p>}
               <div className="enrollment-grid">
-                {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={field} values={answers} update={update}
-                  fieldStatus={field.name === 'cep' ? cepStatus : undefined} />)}
+                {visibleEnrollmentFields(fields, answers).map(field => <Field key={field.name} field={field.name === 'birth' ? { ...field, ...birthRange } : field}
+                  values={answers} update={update}
+                  fieldStatus={field.name === 'birth' ? ageRequirement : field.name === 'cep' ? cepStatus : undefined} />)}
                 {fields[0].name === 'child' &&
                   <PhotoField photo={photo} error={photoError} loading={photoLoading} onChange={changePhoto} />}
               </div>
