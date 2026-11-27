@@ -636,7 +636,9 @@ function Portal() {
     <div className="portal-screen">
       <a href="./" className="enrollment-back"><ArrowLeft size={18}/> Voltar ao site da escola</a>
       <header className="enrollment-intro portal-intro">
-        <img className="enrollment-logo" src={`${import.meta.env.BASE_URL}images/marca-cesc.png`} width="600" height="365" alt="" />
+        <a className="portal-home-logo" href="./" aria-label="Início do site da creche">
+          <img className="enrollment-logo" src={`${import.meta.env.BASE_URL}images/marca-cesc.png`} width="600" height="365" alt="" />
+        </a>
         <p className="enrollment-school">{school.fullName}</p>
         <h1>{staffMode ? 'Secretaria' : 'Portal da família'}</h1>
         <p>{staffMode ? 'Organize solicitações e matrículas.' : 'Cadastre suas crianças e acompanhe a pré-matrícula.'}</p>

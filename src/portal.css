@@ -1,5 +1,7 @@
 .portal-shell { max-width: 980px; }
 .portal-intro { position: static; }
+.portal-home-logo { display: block; width: fit-content; margin: 0 auto 9px; }
+.portal-home-logo .enrollment-logo { margin: 0; }
 .portal h2 { font-size: clamp(1.3rem, 4vw, 1.8rem); }
 .portal h3 { font-size: 1.14rem; }
 .portal-card, .portal-report { padding: clamp(14px, 4vw, 24px); margin-block: 12px; background: white; border: 1px solid #cadfdf; border-radius: 14px; }
