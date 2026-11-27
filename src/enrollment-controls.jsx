@@ -24,8 +24,8 @@ export function Field({ field, values, update, fieldStatus }) {
       ) : type === 'textarea' ? (
         <textarea {...props} rows={3} />
       ) : (
-        <input {...props} type={type} min={type === 'date' ? '1900-01-01' : min}
-          max={type === 'date' ? dateInSchool() : max}
+        <input {...props} type={type} min={min ?? (type === 'date' ? '1900-01-01' : undefined)}
+          max={max ?? (type === 'date' ? dateInSchool() : undefined)}
           pattern={name === 'cep' ? '[0-9]{5}(?:-| )?[0-9]{3}' : undefined}
           inputMode={name === 'cep' ? 'numeric' : undefined}
           placeholder={name === 'cep' ? '00000-000' : undefined}
